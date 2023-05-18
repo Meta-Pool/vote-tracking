@@ -1,0 +1,16 @@
+{
+  "name": "hourly_metrics",
+  "version": "1.0.0",
+  "description": "meta pool secondary hourly metrics",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "node dist/main.js test"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^12.20.55",
+    "near-api-lite": "github:Narwallets/near-api-lite"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Node 12+es2019",
+  "compilerOptions": {
+    "module": "CommonJs",
+    "target": "es2019",
+    "rootDir": "src",
+    "outDir": "dist",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": false,
+    "experimentalDecorators": true,
+    "useUnknownInCatchVariables": false
+  }
+}
