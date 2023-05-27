@@ -4,13 +4,14 @@
   "description": "meta pool secondary hourly metrics",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b --verbose",
     "test": "node dist/main.js test"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@types/node": "^12.20.55",
-    "near-api-lite": "github:Narwallets/near-api-lite"
+    "near-api-lite": "github:Narwallets/near-api-lite",
+    "sqlite3": "^5.1.6"
   }
 }

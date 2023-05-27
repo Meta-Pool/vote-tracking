@@ -1,14 +1,17 @@
 import { writeFileSync } from "fs";
-import { MetaVoteContract } from "./meta-vote";
+import { MetaVoteContract } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
-import { argv, cwd } from "process";
+import { argv, cwd, env } from "process";
+import { VotersRow, createTableVotersIfNotExists } from "./util/tables";
+import { Database } from "sqlite3";
+import * as sq3 from "./util/sq3";
 
 type ByContractInfoType = {
     contract: string;
     totalVotes: number;
     proportionalMeta: number;
 }
-type MetaVoteDataType = {
+type MetaVoteMetricsType = {
     totalLocked: number;
     totalUnlocking: number;
     totalUnLocked: number;
@@ -17,7 +20,8 @@ type MetaVoteDataType = {
     votesPerAddress: ByContractInfoType[];
 }
 
-async function processMetaVote(): Promise<MetaVoteDataType> {
+async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:VotersRow[]}> {
+
     //---
     let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
@@ -27,11 +31,17 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
     let totalVotingPower = 0
     let totalVotingPowerUsed = 0
     let votesPerAddress: ByContractInfoType[] = []
+
+    let dateString = (new Date().toISOString()).slice(0,10)
+    let dbRows: VotersRow[] = []
+
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
 
-        let userTotalMetaLocked = 0
         let userTotalVotingPower = 0
+        let userTotalMetaLocked = 0
+        let userTotalMetaUnlocking = 0
+        let userTotalMetaUnlocked = 0
         for (let lp of voter.locking_positions) {
             const metaAmount = yton(lp.amount)
             if (lp.is_locked) {
@@ -39,14 +49,22 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
                 userTotalVotingPower += yton(lp.voting_power)
             }
             else if (lp.is_unlocked) {
-                totalUnlocking += metaAmount
+                userTotalMetaUnlocked += metaAmount
             }
-            else totalUnlocked += metaAmount;
+            else {
+                userTotalMetaUnlocking += metaAmount
+            }
         }
 
-        totalLocked += userTotalMetaLocked
         totalVotingPower += userTotalVotingPower
+        totalLocked += userTotalMetaLocked
+        totalUnlocking += userTotalMetaUnlocked
+        totalUnlocked += userTotalMetaUnlocking;
 
+        let userTotalVpInUse = 0
+        let userTotalVpInValidators = 0
+        let userTotalVpInLaunches = 0
+        let userTotalVpInAmbassadors = 0
         if (voter.vote_positions && userTotalVotingPower > 0) {
 
             for (let vp of voter.vote_positions) {
@@ -56,7 +74,16 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
 
                 // compute proportional meta locked for this vote
                 const proportionalMeta = userTotalMetaLocked * (positionVotingPower / userTotalVotingPower);
+                userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
+
+                if (vp.votable_address=="metastaking.app") {
+                    userTotalVpInValidators += positionVotingPower
+                } else if (vp.votable_address=="metayield.app") {
+                    userTotalVpInLaunches += positionVotingPower
+                } else {
+                    userTotalVpInAmbassadors += positionVotingPower
+                }
 
                 let prev = votesPerAddress.find(i => i.contract == vp.votable_address)
                 if (!prev) {
@@ -71,29 +98,59 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
                     prev.proportionalMeta += proportionalMeta
                 }
             }
+
+            dbRows.push({
+                date: dateString,
+                account_id: voter.voter_id,
+                vp_in_use: Math.trunc(userTotalVpInUse),
+                vp_idle: Math.trunc(userTotalVotingPower-userTotalVpInUse),
+                meta_locked: Math.trunc(userTotalMetaLocked),
+                meta_unlocking: Math.trunc(userTotalMetaUnlocking),
+                meta_unlocked: Math.trunc(userTotalMetaUnlocked),
+                vp_in_validators: Math.trunc(userTotalVpInValidators),
+                vp_in_launches: Math.trunc(userTotalVpInLaunches),
+                vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
+            })
+
         }
 
     }
 
     return {
-        totalLocked: totalLocked,
-        totalUnlocking: totalUnlocking,
-        totalUnLocked: totalUnlocked,
-        totalVotingPower: totalVotingPower,
-        totalVotingPowerUsed: totalVotingPowerUsed,
-        votesPerAddress: votesPerAddress
+        metrics:{
+            totalLocked: totalLocked,
+            totalUnlocking: totalUnlocking,
+            totalUnLocked: totalUnlocked,
+            totalVotingPower: totalVotingPower,
+            totalVotingPowerUsed: totalVotingPowerUsed,
+            votesPerAddress: votesPerAddress
+        },
+        dbRows: dbRows
     }
 
 }
 
 async function process() {
-    let metaVoteData = await processMetaVote();
+    
+    let {metrics,dbRows} = await processMetaVote();
+    
     writeFileSync("hourly-metrics.json", JSON.stringify({
-        metaVote: metaVoteData
+        metaVote: metrics
     }));
+
+    // try to update the db
+    const DB_FILE = env.DB || "voters.db3"
+    let db: Database = await sq3.open(DB_FILE)
+    if (db) await createTableVotersIfNotExists(db)
+    // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+    // so we store the high-water mark for the voter/day
+    await sq3.insertOnConflictUpdate(db, "voters", dbRows,
+        "where excluded.vp_in_use > voters.vp_in_use"
+        );
 }
 
-export const useTestnet = false; //argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
+
+export const useTestnet = argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
