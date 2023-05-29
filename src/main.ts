@@ -12,6 +12,7 @@ type ByContractInfoType = {
     proportionalMeta: number;
 }
 type MetaVoteMetricsType = {
+    metaVoteUserCount: number;
     totalLocked: number;
     totalUnlocking: number;
     totalUnLocked: number;
@@ -118,12 +119,13 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
 
     return {
         metrics:{
+            metaVoteUserCount: allVoters.length,
             totalLocked: totalLocked,
             totalUnlocking: totalUnlocking,
             totalUnLocked: totalUnlocked,
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
-            votesPerAddress: votesPerAddress
+            votesPerAddress: votesPerAddress,
         },
         dbRows: dbRows
     }
@@ -133,6 +135,7 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
 async function process() {
     
     let {metrics,dbRows} = await processMetaVote();
+    console.log(metrics)
     
     writeFileSync("hourly-metrics.json", JSON.stringify({
         metaVote: metrics
@@ -147,6 +150,7 @@ async function process() {
     await sq3.insertOnConflictUpdate(db, "voters", dbRows,
         "where excluded.vp_in_use > voters.vp_in_use"
         );
+    console.log("update/insert",dbRows.length,"rows")
 }
 
 

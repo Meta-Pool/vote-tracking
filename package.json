@@ -1,11 +1,11 @@
 {
-  "name": "hourly_metrics",
+  "name": "vote-tracking",
   "version": "1.0.0",
-  "description": "meta pool secondary hourly metrics",
+  "description": "meta vote tracking stats and DB",
   "main": "index.js",
   "scripts": {
     "build": "tsc -b --verbose",
-    "test": "node dist/main.js test"
+    "test": "npm run build && node dist/main.js test"
   },
   "author": "",
   "license": "ISC",
