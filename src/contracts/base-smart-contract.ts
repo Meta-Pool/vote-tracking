@@ -1,5 +1,7 @@
 import * as near from "near-api-lite"
 
+export type U128String = string;
+
 let globalDryRunMode: boolean = false;
 export function setGlobalDryRunMode(mode:boolean){
     globalDryRunMode = mode;

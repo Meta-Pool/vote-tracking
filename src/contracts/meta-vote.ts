@@ -1,6 +1,4 @@
-import { SmartContract } from './base-smart-contract.js';
-
-type U128String = string;
+import { SmartContract, U128String } from './base-smart-contract.js';
 
 export type VotableObjectJSON = {
     votable_contract: String;
@@ -14,7 +12,7 @@ export type VotePositionJSON = {
     voting_power: U128String;
 }
 
-type Voters = {
+export type Voters = {
     voter_id: string;
     locking_positions: Array<
         {

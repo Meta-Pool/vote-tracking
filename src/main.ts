@@ -1,10 +1,11 @@
 import { writeFileSync } from "fs";
-import { MetaVoteContract } from "./contracts/meta-vote";
+import { MetaVoteContract, Voters } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { VotersRow, createTableVotersIfNotExists } from "./util/tables";
 import { Database } from "sqlite3";
 import * as sq3 from "./util/sq3";
+import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 
 type ByContractInfoType = {
     contract: string;
@@ -21,18 +22,9 @@ type MetaVoteMetricsType = {
     votesPerAddress: ByContractInfoType[];
 }
 
-async function processMetaVote(): Promise<{ metrics: MetaVoteMetricsType, dbRows: VotersRow[] }> {
+async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVoteMetricsType, dbRows: VotersRow[] }> {
 
     //---
-    let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
-    const allVoters = await metaVote.getAllVoters();
-
-    try {
-        writeFileSync(`AllVoters.${new Date().toISOString().replace(/:/g, "-")}.json`, JSON.stringify(allVoters));
-    } catch (ex) {
-        console.error(ex)
-    }
-
     let totalLocked = 0
     let totalUnlocking = 0
     let totalUnlocked = 0
@@ -145,12 +137,27 @@ async function processMetaVote(): Promise<{ metrics: MetaVoteMetricsType, dbRows
 
 async function process() {
 
-    let { metrics, dbRows } = await processMetaVote();
-    console.log(metrics)
+    let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
+    const allVoters = await metaVote.getAllVoters();
 
+    try {
+        writeFileSync(`AllVoters.${new Date().toISOString().replace(/:/g, "-")}.json`, JSON.stringify(allVoters));
+    } catch (ex) {
+        console.error(ex)
+    }
+
+    let { metrics, dbRows } = await processMetaVote(allVoters);
+    console.log(metrics)
+    
     writeFileSync("hourly-metrics.json", JSON.stringify({
         metaVote: metrics
     }));
+
+    try {
+        await setRecentlyFreezedFoldersVotes(allVoters)
+    } catch(err) {
+        console.error(err)
+    }
 
     // try to update the db
     const DB_FILE = env.DB || "voters.db3"
@@ -168,5 +175,6 @@ async function process() {
 export const useTestnet = argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 process()
