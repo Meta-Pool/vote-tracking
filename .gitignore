@@ -2,3 +2,4 @@ dist
 node_modules
 hourly-metrics.json
 voters.db3
+AllVoters.*.json

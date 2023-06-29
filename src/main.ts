@@ -21,11 +21,18 @@ type MetaVoteMetricsType = {
     votesPerAddress: ByContractInfoType[];
 }
 
-async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:VotersRow[]}> {
+async function processMetaVote(): Promise<{ metrics: MetaVoteMetricsType, dbRows: VotersRow[] }> {
 
     //---
     let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
+
+    try {
+        writeFileSync(`AllVoters.${new Date().toISOString().replace(/:/g, "-")}.json`, JSON.stringify(allVoters));
+    } catch (ex) {
+        console.error(ex)
+    }
+
     let totalLocked = 0
     let totalUnlocking = 0
     let totalUnlocked = 0
@@ -33,7 +40,7 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
     let totalVotingPowerUsed = 0
     let votesPerAddress: ByContractInfoType[] = []
 
-    let dateString = (new Date().toISOString()).slice(0,10)
+    let dateString = (new Date().toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
 
     for (let voter of allVoters) {
@@ -66,6 +73,7 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
         let userTotalVpInValidators = 0
         let userTotalVpInLaunches = 0
         let userTotalVpInAmbassadors = 0
+        let userTotalVpInOther = 0
         if (voter.vote_positions && userTotalVotingPower > 0) {
 
             for (let vp of voter.vote_positions) {
@@ -78,12 +86,14 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
-                if (vp.votable_address=="metastaking.app") {
+                if (vp.votable_address == "metastaking.app") {
                     userTotalVpInValidators += positionVotingPower
-                } else if (vp.votable_address=="metayield.app") {
+                } else if (vp.votable_address == "metayield.app") {
                     userTotalVpInLaunches += positionVotingPower
-                } else {
+                } else if (vp.votable_address == "initiatives") {
                     userTotalVpInAmbassadors += positionVotingPower
+                } else {
+                    userTotalVpInOther += positionVotingPower
                 }
 
                 let prev = votesPerAddress.find(i => i.contract == vp.votable_address)
@@ -104,13 +114,14 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
                 date: dateString,
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
-                vp_idle: Math.trunc(userTotalVotingPower-userTotalVpInUse),
+                vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
                 meta_locked: Math.trunc(userTotalMetaLocked),
                 meta_unlocking: Math.trunc(userTotalMetaUnlocking),
                 meta_unlocked: Math.trunc(userTotalMetaUnlocked),
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
                 vp_in_launches: Math.trunc(userTotalVpInLaunches),
                 vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
+                //vp_in_others: Math.trunc(userTotalVpInOther),
             })
 
         }
@@ -118,7 +129,7 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
     }
 
     return {
-        metrics:{
+        metrics: {
             metaVoteUserCount: allVoters.length,
             totalLocked: totalLocked,
             totalUnlocking: totalUnlocking,
@@ -133,10 +144,10 @@ async function processMetaVote(): Promise<{metrics:MetaVoteMetricsType, dbRows:V
 }
 
 async function process() {
-    
-    let {metrics,dbRows} = await processMetaVote();
+
+    let { metrics, dbRows } = await processMetaVote();
     console.log(metrics)
-    
+
     writeFileSync("hourly-metrics.json", JSON.stringify({
         metaVote: metrics
     }));
@@ -149,8 +160,8 @@ async function process() {
     // so we store the high-water mark for the voter/day
     await sq3.insertOnConflictUpdate(db, "voters", dbRows,
         "where excluded.vp_in_use > voters.vp_in_use"
-        );
-    console.log("update/insert",dbRows.length,"rows")
+    );
+    console.log("update/insert", dbRows.length, "rows")
 }
 
 

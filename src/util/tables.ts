@@ -19,6 +19,7 @@ export async function createTableVotersIfNotExists(db: Database) {
         )`
     );
   }
+  //vp_in_others integer,
   
   export type VotersRow = {
     date:string;
@@ -31,4 +32,5 @@ export async function createTableVotersIfNotExists(db: Database) {
     vp_in_validators: number;
     vp_in_launches: number;
     vp_in_ambassadors: number;
+    //vp_in_others: number;
   }

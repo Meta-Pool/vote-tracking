@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -b --verbose",
-    "test": "npm run build && node dist/main.js test"
+    "test": "npm run build && node dist/main.js test",
+    "start": "npm run build && echo 'check scripts/every-hour.sh, include it in crontab'"
   },
   "author": "",
   "license": "ISC",
