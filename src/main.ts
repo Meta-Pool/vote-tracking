@@ -1,4 +1,4 @@
-import { writeFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { MetaVoteContract, Voters } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
@@ -9,6 +9,7 @@ import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 
 type ByContractInfoType = {
     contract: string;
+    countVoters: number,
     totalVotes: number;
     proportionalMeta: number;
 }
@@ -58,8 +59,8 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
 
         totalVotingPower += userTotalVotingPower
         totalLocked += userTotalMetaLocked
-        totalUnlocking += userTotalMetaUnlocked
-        totalUnlocked += userTotalMetaUnlocking;
+        totalUnlocking += userTotalMetaUnlocking
+        totalUnlocked += userTotalMetaUnlocked;
 
         let userTotalVpInUse = 0
         let userTotalVpInValidators = 0
@@ -68,6 +69,7 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
         let userTotalVpInOther = 0
         if (voter.vote_positions && userTotalVotingPower > 0) {
 
+            let voterCounted:Record<string,boolean> = {}
             for (let vp of voter.vote_positions) {
 
                 const positionVotingPower = yton(vp.voting_power)
@@ -78,25 +80,34 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
+                let round = "#1"
                 if (vp.votable_address == "metastaking.app") {
                     userTotalVpInValidators += positionVotingPower
                 } else if (vp.votable_address == "metayield.app") {
                     userTotalVpInLaunches += positionVotingPower
                 } else if (vp.votable_address == "initiatives") {
                     userTotalVpInAmbassadors += positionVotingPower
+                    if (vp.votable_object_id.includes("Round #2")) round="#2";
                 } else {
                     userTotalVpInOther += positionVotingPower
                 }
 
-                let prev = votesPerAddress.find(i => i.contract == vp.votable_address)
+                let id = vp.votable_address+round
+                let prev = votesPerAddress.find(i => i.contract == id)
                 if (!prev) {
                     votesPerAddress.push({
-                        contract: vp.votable_address,
+                        contract: id,
+                        countVoters: 1,
                         totalVotes: positionVotingPower,
                         proportionalMeta: proportionalMeta
                     })
+                    voterCounted[id] = true
                 }
                 else {
+                    if (!voterCounted[id]) {
+                        prev.countVoters += 1;
+                        voterCounted[id] = true
+                    }
                     prev.totalVotes += positionVotingPower
                     prev.proportionalMeta += proportionalMeta
                 }
@@ -171,10 +182,25 @@ async function process() {
     console.log("update/insert", dbRows.length, "rows")
 }
 
+async function analyzeSingleFile(filePath:string) {
+    let allVoters = JSON.parse(readFileSync(filePath).toString())
+    let { metrics } = await processMetaVote(allVoters);
+    console.log(metrics)
+}
 
-export const useTestnet = argv.includes("testnet") || cwd().includes("testnet");
+export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
+if (useTestnet) console.log("USING TESTNET")
 const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
+export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "pipeline-operator.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
-process()
+
+// process single file: node dist/main.js file xxxx.json
+const fileArgvIndex = argv.findIndex(i=>i=="file")
+if (fileArgvIndex>0) {
+    analyzeSingleFile(argv[fileArgvIndex+1])
+}
+else {
+    process()
+}

@@ -1,14 +1,13 @@
 import { yton } from "near-api-lite";
 import { FolderData, MetaPipelineContract, ProjectMetadataJson } from "./contracts/meta-pipeline";
 import { Voters } from "./contracts/meta-vote";
-import { META_PIPELINE_CONTRACT_ID } from "./main";
+import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID } from "./main";
 import { getCredentials } from "./util/near";
 
 export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[]) {
     const votes: Record<number, bigint> = processVoters(allVoters)
 
-    const operatorAccountId = "pipeline-operator.near"
-    const credentials = getCredentials(operatorAccountId)
+    const credentials = getCredentials(META_PIPELINE_OPERATOR_ID)
     
     const metaPipelineContract = new MetaPipelineContract(META_PIPELINE_CONTRACT_ID, credentials.account_id, credentials.private_key)
     

@@ -1,10 +1,12 @@
 import * as sqlite3 from "sqlite3";
 
-// Hack to look like node-postgresql
-// (and handle async / await operation)
-export async function open(filename: string): Promise<sqlite3.Database> {
+// Hack to make sqlite3 look like node-postgresql
+// and handle async / await operations
+
+export async function open(filename: string, readOnly:boolean=false): Promise<sqlite3.Database> {
   return new Promise(function (resolve, reject) {
-    const db = new sqlite3.Database(filename, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
+    const openMode = readOnly? sqlite3.OPEN_READONLY : (sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE)
+    const db = new sqlite3.Database(filename, openMode, (err) => {
       if (err) {
         console.error("filename", filename)
         reject(err);

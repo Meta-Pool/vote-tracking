@@ -1,0 +1,31 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "test",
+			"group": "test",
+			"problemMatcher": [],
+			"label": "npm: test",
+			"detail": "npm run build && node dist/main.js test"
+		},
+		{
+			"type": "shell",
+			"command": "node",
+			"args": ["dist/main.js","test","file","AllVoters.2023-06-30T23-00-10.644Z.json"],
+			"group": "test",
+			"problemMatcher": [],
+			"label": "test analysis single file round 1",
+			"detail": ""
+		},
+		{
+			"type": "shell",
+			"command": "node",
+			"args": ["dist/main.js","test","file","AllVoters.2023-07-18.json"],
+			"group": "test",
+			"problemMatcher": [],
+			"label": "test analysis single file current",
+			"detail": ""
+		}
+	]
+}
