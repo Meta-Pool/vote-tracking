@@ -3,9 +3,13 @@ import { MetaVoteContract, Voters } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { VotersRow, createTableVotersIfNotExists } from "./util/tables";
-import { Database } from "sqlite3";
-import * as sq3 from "./util/sq3";
+import { insertOnConflictUpdate } from "./util/postgres";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
+
+import { Client } from 'pg';
+import { config } from 'dotenv';
+
+config(); // This will load variables from .env file
 
 type ByContractInfoType = {
     contract: string;
@@ -146,7 +150,7 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
 
 }
 
-async function process() {
+async function mainProcess() {
 
     let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
@@ -170,15 +174,18 @@ async function process() {
         console.error(err)
     }
 
-    // try to update the db
-    const DB_FILE = env.DB || "voters.db3"
-    let db: Database = await sq3.open(DB_FILE)
-    if (db) await createTableVotersIfNotExists(db)
+    const client = new Client({
+        user: process.env.DB_USER,
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        password: process.env.DB_PASSWORD,
+        port: Number(process.env.DB_PORT),
+    });
+
+    if (client) await createTableVotersIfNotExists(client);
     // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
     // so we store the high-water mark for the voter/day
-    await sq3.insertOnConflictUpdate(db, "voters", dbRows,
-        "where excluded.vp_in_use > voters.vp_in_use"
-    );
+    await insertOnConflictUpdate(client, dbRows);
     console.log("update/insert", dbRows.length, "rows")
 }
 
@@ -202,5 +209,5 @@ if (fileArgvIndex>0) {
     analyzeSingleFile(argv[fileArgvIndex+1])
 }
 else {
-    process()
+    mainProcess()
 }
