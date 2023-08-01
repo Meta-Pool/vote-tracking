@@ -4,7 +4,7 @@ import { Voters } from "./contracts/meta-vote";
 import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID } from "./main";
 import { getCredentials } from "./util/near";
 
-export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[]) {
+export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[], useMainnet: boolean) {
     const votes: Record<number, bigint> = processVoters(allVoters)
 
     const credentials = getCredentials(META_PIPELINE_OPERATOR_ID)
@@ -53,7 +53,7 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[]) {
         const projectVotes = votes[project.id] || BigInt("1")
         const percentage = projectVotes * BigInt(10 ** 4) / totalVotesInFolder
         console.log(project.id, projectVotes, Number(percentage.toString()))
-        await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
+        if (useMainnet) await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
     }
 }
 

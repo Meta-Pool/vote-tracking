@@ -9,7 +9,7 @@ import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import { Client } from 'pg';
 import { config } from 'dotenv';
 
-config(); // This will load variables from .env file
+
 
 type ByContractInfoType = {
     contract: string;
@@ -169,17 +169,23 @@ async function mainProcess() {
     }));
 
     try {
-        await setRecentlyFreezedFoldersVotes(allVoters)
+        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
     } catch(err) {
         console.error(err)
     }
 
+    config(); // This will load variables from .env file
+
     const client = new Client({
-        user: process.env.DB_USER,
+        user: process.env.DB_USERNAME,
         host: process.env.DB_HOST,
-        database: process.env.DB_NAME,
+        database: process.env.DB_DATABASE,
         password: process.env.DB_PASSWORD,
         port: Number(process.env.DB_PORT),
+        ssl: {
+            rejectUnauthorized: false,
+            ca: readFileSync("./certificate/ca-certificate.crt").toString(),
+        },
     });
 
     if (client) await createTableVotersIfNotExists(client);
@@ -187,6 +193,8 @@ async function mainProcess() {
     // so we store the high-water mark for the voter/day
     await insertOnConflictUpdate(client, dbRows);
     console.log("update/insert", dbRows.length, "rows")
+
+    await client.end();
 }
 
 async function analyzeSingleFile(filePath:string) {
@@ -200,7 +208,7 @@ export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
 const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
-export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "pipeline-operator.testnet"
+export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "meta-vote.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
 // process single file: node dist/main.js file xxxx.json

@@ -5,3 +5,6 @@ voters.db3
 AllVoters.*.json
 
 .env
+.DS_Store
+
+certificate/*.crt

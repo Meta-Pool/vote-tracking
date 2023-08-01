@@ -27,9 +27,6 @@ export async function createTableVotersIfNotExists(client: Client) {
     console.log('Table is successfully created');
   } catch (err) {
     console.error('An error occurred', err);
-  } finally {
-    // Always close the connection
-    await client.end();
   }
 }
   //vp_in_others integer,
