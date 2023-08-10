@@ -1,4 +1,6 @@
 import { Client } from 'pg';
+import { Database } from 'sqlite3';
+import { run } from './sq3';
 
 export async function createTableVotersIfNotExists(client: Client) {
   try {
@@ -29,7 +31,24 @@ export async function createTableVotersIfNotExists(client: Client) {
     console.error('An error occurred', err);
   }
 }
-  //vp_in_others integer,
+export async function createTableVotersSqLiteIfNotExists(db: Database) {
+  await run(db, 
+      `create table if not exists 
+      voters (
+      date text,
+      account_id text,
+      vp_in_use integer,
+      vp_idle integer,
+      meta_locked integer,
+      meta_unlocking integer,
+      meta_unlocked integer,
+      vp_in_validators integer,
+      vp_in_launches integer,
+      vp_in_ambassadors integer,
+      PRIMARY KEY (date, account_id)
+      )`
+  );
+}
 
 export type VotersRow = {
   date: string;

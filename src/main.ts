@@ -2,12 +2,16 @@ import { readFileSync, writeFileSync } from "fs";
 import { MetaVoteContract, Voters } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { VotersRow, createTableVotersIfNotExists } from "./util/tables";
+import { VotersRow, createTableVotersIfNotExists, createTableVotersSqLiteIfNotExists } from "./util/tables";
 import { insertOnConflictUpdate } from "./util/postgres";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
+import * as sq3 from './util/sq3'
+import { Database as SqLiteDatabase } from "sqlite3";
+
 
 import { Client } from 'pg';
 import { config } from 'dotenv';
+import { Database as PostgresDatabase } from "sqlite3";
 
 
 
@@ -73,7 +77,7 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
         let userTotalVpInOther = 0
         if (voter.vote_positions && userTotalVotingPower > 0) {
 
-            let voterCounted:Record<string,boolean> = {}
+            let voterCounted: Record<string, boolean> = {}
             for (let vp of voter.vote_positions) {
 
                 const positionVotingPower = yton(vp.voting_power)
@@ -91,12 +95,12 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
                     userTotalVpInLaunches += positionVotingPower
                 } else if (vp.votable_address == "initiatives") {
                     userTotalVpInAmbassadors += positionVotingPower
-                    if (vp.votable_object_id.includes("Round #2")) round="#2";
+                    if (vp.votable_object_id.includes("Round #2")) round = "#2";
                 } else {
                     userTotalVpInOther += positionVotingPower
                 }
 
-                let id = vp.votable_address+round
+                let id = vp.votable_address + round
                 let prev = votesPerAddress.find(i => i.contract == id)
                 if (!prev) {
                     votesPerAddress.push({
@@ -163,41 +167,73 @@ async function mainProcess() {
 
     let { metrics, dbRows } = await processMetaVote(allVoters);
     console.log(metrics)
-    
+
     writeFileSync("hourly-metrics.json", JSON.stringify({
         metaVote: metrics
     }));
 
     try {
         await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
-    } catch(err) {
+    } catch (err) {
         console.error(err)
     }
 
     config(); // This will load variables from .env file
 
-    const client = new Client({
-        user: process.env.DB_USERNAME,
-        host: process.env.DB_HOST,
-        database: process.env.DB_DATABASE,
-        password: process.env.DB_PASSWORD,
-        port: Number(process.env.DB_PORT),
-        ssl: {
-            rejectUnauthorized: false,
-            ca: readFileSync("./certificate/ca-certificate.crt").toString(),
-        },
-    });
-
-    if (client) await createTableVotersIfNotExists(client);
-    // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
-    // so we store the high-water mark for the voter/day
-    await insertOnConflictUpdate(client, dbRows);
-    console.log("update/insert", dbRows.length, "rows")
-
-    await client.end();
+    updateDbPg(dbRows)
+    updateDbSqLite(dbRows)
 }
 
-async function analyzeSingleFile(filePath:string) {
+async function updateDbPg(dbRows: VotersRow[]) {
+    console.log("Updating pg db")
+    try {
+        const client = new Client({
+            user: process.env.DB_USERNAME,
+            host: process.env.DB_HOST,
+            database: process.env.DB_DATABASE,
+            password: process.env.DB_PASSWORD,
+            port: Number(process.env.DB_PORT),
+            ssl: {
+                rejectUnauthorized: false,
+                ca: readFileSync("./certificate/ca-certificate.crt").toString(),
+            },
+        });
+
+        if (client) await createTableVotersIfNotExists(client);
+        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        // so we store the high-water mark for the voter/day
+        await insertOnConflictUpdate(client, dbRows);
+        console.log("update/insert", dbRows.length, "rows")
+
+        await client.end();
+
+        console.log("pg db updated successfully")
+        console.log("update/insert", dbRows.length, "rows")
+    } catch (err) {
+        console.error("Error updating pg db", err.message, err.stack)
+    }
+}
+
+async function updateDbSqLite(dbRows: VotersRow[]) {
+    console.log("Updating sqlite db")
+    try {
+        // try to update the db
+        const DB_FILE = env.DB || "voters.db3"
+        let db: SqLiteDatabase = await sq3.open(DB_FILE)
+        if (db) await createTableVotersSqLiteIfNotExists(db)
+        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        // so we store the higah-water mark for the voter/day
+        await sq3.insertOnConflictUpdate(db, "voters", dbRows,
+            "where excluded.vp_in_use > voters.vp_in_use"
+        );
+        console.log("sqlite db updated successfully")
+        console.log("update/insert", dbRows.length, "rows")
+    } catch (err) {
+        console.error("Error updating sqlite db", err.message, err.stack)
+    }
+}
+
+async function analyzeSingleFile(filePath: string) {
     let allVoters = JSON.parse(readFileSync(filePath).toString())
     let { metrics } = await processMetaVote(allVoters);
     console.log(metrics)
@@ -212,9 +248,9 @@ export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" :
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
 // process single file: node dist/main.js file xxxx.json
-const fileArgvIndex = argv.findIndex(i=>i=="file")
-if (fileArgvIndex>0) {
-    analyzeSingleFile(argv[fileArgvIndex+1])
+const fileArgvIndex = argv.findIndex(i => i == "file")
+if (fileArgvIndex > 0) {
+    analyzeSingleFile(argv[fileArgvIndex + 1])
 }
 else {
     mainProcess()
