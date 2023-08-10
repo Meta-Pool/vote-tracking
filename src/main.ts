@@ -180,8 +180,8 @@ async function mainProcess() {
 
     config(); // This will load variables from .env file
 
-    updateDbPg(dbRows)
-    updateDbSqLite(dbRows)
+    await updateDbPg(dbRows)
+    await updateDbSqLite(dbRows)
 }
 
 async function updateDbPg(dbRows: VotersRow[]) {
@@ -208,7 +208,6 @@ async function updateDbPg(dbRows: VotersRow[]) {
         await client.end();
 
         console.log("pg db updated successfully")
-        console.log("update/insert", dbRows.length, "rows")
     } catch (err) {
         console.error("Error updating pg db", err.message, err.stack)
     }
