@@ -46,7 +46,8 @@ async function processMetaVote(allVoters: Voters[]):
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
-    let dateString = (new Date().toISOString()).slice(0, 10)
+    // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
+    let dateString = (new Date(Date.now()-30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
 
     for (let voter of allVoters) {
