@@ -1,22 +1,22 @@
-import { readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { MetaVoteContract, Voters } from "./contracts/meta-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { VotersRow, createTableVotersIfNotExists, createTableVotersSqLiteIfNotExists } from "./util/tables";
-import { insertOnConflictUpdate } from "./util/postgres";
+import { CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3'
 import { Database as SqLiteDatabase } from "sqlite3";
 
 
 import { Client } from 'pg';
-import { config } from 'dotenv';
-import { Database as PostgresDatabase } from "sqlite3";
+import { join } from "path";
+import { buildInsert } from "./util/sqlBuilder";
+import { getPgConfig } from "./util/postgres";
 
 
-
-type ByContractInfoType = {
+type ByContractAndRoundInfoType = {
     contract: string;
+    round: number,
     countVoters: number,
     totalVotes: number;
     proportionalMeta: number;
@@ -28,10 +28,15 @@ type MetaVoteMetricsType = {
     totalUnLocked: number;
     totalVotingPower: number;
     totalVotingPowerUsed: number;
-    votesPerAddress: ByContractInfoType[];
+    votesPerContractAndRound: ByContractAndRoundInfoType[];
 }
 
-async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVoteMetricsType, dbRows: VotersRow[] }> {
+async function processMetaVote(allVoters: Voters[]):
+    Promise<{
+        metrics: MetaVoteMetricsType,
+        dbRows: VotersRow[],
+        dbRows2: VotersByContractAndRound[]
+    }> {
 
     //---
     let totalLocked = 0
@@ -39,7 +44,7 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
     let totalUnlocked = 0
     let totalVotingPower = 0
     let totalVotingPowerUsed = 0
-    let votesPerAddress: ByContractInfoType[] = []
+    let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
     let dateString = (new Date().toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
@@ -76,7 +81,8 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
         let userTotalVpInAmbassadors = 0
         let userTotalVpInOther = 0
         if (voter.vote_positions && userTotalVotingPower > 0) {
-
+            // flag to not count the voter twice
+            // if they voted for more than one initiative
             let voterCounted: Record<string, boolean> = {}
             for (let vp of voter.vote_positions) {
 
@@ -88,33 +94,40 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
-                let round = "#1"
+                let round = 0
                 if (vp.votable_address == "metastaking.app") {
                     userTotalVpInValidators += positionVotingPower
                 } else if (vp.votable_address == "metayield.app") {
                     userTotalVpInLaunches += positionVotingPower
                 } else if (vp.votable_address == "initiatives") {
                     userTotalVpInAmbassadors += positionVotingPower
-                    if (vp.votable_object_id.includes("Round #2")) round = "#2";
+                    // get round# from object_id
+                    for (let n = 2; n < 999; n++) {
+                        if (vp.votable_object_id.includes(`Round #${n} `) || vp.votable_object_id.includes(`Round #${n}-`)) {
+                            round = n;
+                            break;
+                        }
+                    }
                 } else {
                     userTotalVpInOther += positionVotingPower
                 }
 
-                let id = vp.votable_address + round
-                let prev = votesPerAddress.find(i => i.contract == id)
+                let countVoterId = vp.votable_address + `- Round #${round}`
+                let prev = votesPerContractAndRound.find(i => i.contract == vp.votable_address && i.round == round)
                 if (!prev) {
-                    votesPerAddress.push({
-                        contract: id,
+                    votesPerContractAndRound.push({
+                        contract: vp.votable_address,
+                        round,
                         countVoters: 1,
                         totalVotes: positionVotingPower,
                         proportionalMeta: proportionalMeta
                     })
-                    voterCounted[id] = true
+                    voterCounted[countVoterId] = true
                 }
                 else {
-                    if (!voterCounted[id]) {
+                    if (!voterCounted[countVoterId]) {
                         prev.countVoters += 1;
-                        voterCounted[id] = true
+                        voterCounted[countVoterId] = true
                     }
                     prev.totalVotes += positionVotingPower
                     prev.proportionalMeta += proportionalMeta
@@ -139,6 +152,20 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
 
     }
 
+    // prepare rows to be sent to table to track votes by contract & round
+    let dbRows2: VotersByContractAndRound[] = []
+    for (let item of votesPerContractAndRound) {
+        dbRows2.push(
+            {
+                date: dateString,
+                contract: item.contract,
+                round: item.round,
+                countVoters: item.countVoters,
+                totalVotes: Math.round(item.totalVotes),
+                proportionalMeta: Math.round(item.proportionalMeta)
+            })
+    }
+
     return {
         metrics: {
             metaVoteUserCount: allVoters.length,
@@ -147,9 +174,10 @@ async function processMetaVote(allVoters: Voters[]): Promise<{ metrics: MetaVote
             totalUnLocked: totalUnlocked,
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
-            votesPerAddress: votesPerAddress,
+            votesPerContractAndRound: votesPerContractAndRound,
         },
-        dbRows: dbRows
+        dbRows,
+        dbRows2
     }
 
 }
@@ -159,13 +187,20 @@ async function mainProcess() {
     let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
 
-    try {
-        writeFileSync(`AllVoters.${new Date().toISOString().replace(/:/g, "-")}.json`, JSON.stringify(allVoters));
-    } catch (ex) {
-        console.error(ex)
+    {
+        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
+        const monthDir = dateIsoFile.slice(0, 7)
+        if (!existsSync(monthDir)) {
+            mkdirSync(monthDir)
+        }
+        try {
+            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
+        } catch (ex) {
+            console.error(ex)
+        }
     }
 
-    let { metrics, dbRows } = await processMetaVote(allVoters);
+    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
     console.log(metrics)
 
     writeFileSync("hourly-metrics.json", JSON.stringify({
@@ -177,33 +212,139 @@ async function mainProcess() {
     } catch (err) {
         console.error(err)
     }
-
-    config(); // This will load variables from .env file
-
-    await updateDbPg(dbRows)
-    await updateDbSqLite(dbRows)
+    await updateDbPg(dbRows, dbRows2)
+    await updateDbSqLite(dbRows, dbRows2)
 }
 
-async function updateDbPg(dbRows: VotersRow[]) {
+async function pgInsertVotersHighWaterMark(
+    client: Client,
+    dbRows: VotersRow[]
+) {
+    for (const row of dbRows) {
+        const { statement, values } = buildInsert("pg",
+            "insert", "voters",
+            row,
+            {
+                onConflictArgument: "(date,account_id)",
+                onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use"
+            })
+        try {
+            await client.query(statement, values);
+        } catch (err) {
+            console.error('An error occurred', err);
+            console.error(statement)
+            console.error(values)
+            break;
+        }
+    }
+}
+
+// async function pgInsertVotersHighWaterMark(
+//     client: Client,
+//     dbRows: VotersRow[]
+//   ) {
+//     for (const row of dbRows) {
+//       const query = `
+//         INSERT INTO voters (
+//           date,
+//           account_id,
+//           vp_in_use,
+//           vp_idle,
+//           meta_locked,
+//           meta_unlocking,
+//           meta_unlocked,
+//           vp_in_validators,
+//           vp_in_launches,
+//           vp_in_ambassadors
+//         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+//         ON CONFLICT (date, account_id)
+//         DO UPDATE SET
+//           vp_in_use = excluded.vp_in_use,
+//           vp_idle = excluded.vp_idle,
+//           meta_locked = excluded.meta_locked,
+//           meta_unlocking = excluded.meta_unlocking,
+//           meta_unlocked = excluded.meta_unlocked,
+//           vp_in_validators = excluded.vp_in_validators,
+//           vp_in_launches = excluded.vp_in_launches,
+//           vp_in_ambassadors = excluded.vp_in_ambassadors
+//         WHERE excluded.vp_in_use > voters.vp_in_use
+//       `;
+
+//       const values = [
+//         row.date,
+//         row.account_id,
+//         row.vp_in_use,
+//         row.vp_idle,
+//         row.meta_locked,
+//         row.meta_unlocking,
+//         row.meta_unlocked,
+//         row.vp_in_validators,
+//         row.vp_in_launches,
+//         row.vp_in_ambassadors
+//       ];
+
+//       try {
+//         await client.query(query, values);
+//       } catch (err) {
+//         console.error('An error occurred', err);
+//       }
+//     }
+//   }
+
+async function pgInsertVotersPerContract(
+    client: Client,
+    dbRows: VotersByContractAndRound[]
+) {
+    for (const row of dbRows) {
+        const { statement, values } = buildInsert("pg",
+            "insert", "voters_per_day_contract_round",
+            row,
+            {
+                onConflictArgument: "(date,contract,round)",
+                onConflictCondition: ""
+            })
+        try {
+            await client.query(statement, values);
+        } catch (err) {
+            console.error('An error occurred', err);
+            console.error(statement)
+            console.error(values)
+            break;
+        }
+    }
+}
+
+async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
     console.log("Updating pg db")
     try {
+        const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
         const client = new Client({
-            user: process.env.DB_USERNAME,
-            host: process.env.DB_HOST,
-            database: process.env.DB_DATABASE,
-            password: process.env.DB_PASSWORD,
-            port: Number(process.env.DB_PORT),
+            host: config.host,
+            user: config.userName,
+            password: config.password,
+            database: useTestnet ? "near_testnet" : "near_mainnet",
+            port: config.port,
             ssl: {
                 rejectUnauthorized: false,
-                ca: readFileSync("./certificate/ca-certificate.crt").toString(),
+                ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
             },
         });
-
-        if (client) await createTableVotersIfNotExists(client);
+        console.log("db:", client.database)
+        // Connect & create tables if not exist
+        await client.connect();
+        await client.query(CREATE_TABLE_VOTERS)
+        await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND)
         // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
         // so we store the high-water mark for the voter/day
-        await insertOnConflictUpdate(client, dbRows);
-        console.log("update/insert", dbRows.length, "rows")
+        await client.query("BEGIN TRANSACTION");
+        await pgInsertVotersHighWaterMark(client, dbRows);
+        await client.query("COMMIT");
+        console.log(client.database, "pg update/insert voters", dbRows.length, "rows")
+
+        await client.query("BEGIN TRANSACTION");
+        await pgInsertVotersPerContract(client, byContractRows);
+        await client.query("COMMIT");
+        console.log(client.database, "pg update/insert voters_per_day_contract_round", byContractRows.length, "rows")
 
         await client.end();
 
@@ -213,20 +354,33 @@ async function updateDbPg(dbRows: VotersRow[]) {
     }
 }
 
-async function updateDbSqLite(dbRows: VotersRow[]) {
+async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
     console.log("Updating sqlite db")
     try {
-        // try to update the db
+        // Connect & create tables if not exist
         const DB_FILE = env.DB || "voters.db3"
         let db: SqLiteDatabase = await sq3.open(DB_FILE)
-        if (db) await createTableVotersSqLiteIfNotExists(db)
+        await sq3.run(db, CREATE_TABLE_VOTERS);
+        await sq3.run(db, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
         // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
-        // so we store the higah-water mark for the voter/day
+        // so we store the high-water mark for the voter/day
         await sq3.insertOnConflictUpdate(db, "voters", dbRows,
-            "where excluded.vp_in_use > voters.vp_in_use"
+            {
+                onConflictArgument: "",
+                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use"
+            }
         );
+        console.log("sq3 update/insert", dbRows.length, "rows")
+
+        await sq3.insertOnConflictUpdate(db, "voters_per_day_contract_round", byContractRows,
+            {
+                onConflictArgument: "",
+                onConflictCondition: ""
+            }
+        );
+        console.log("sq3 update/insert voters_per_day_contract_round", byContractRows.length, "rows")
         console.log("sqlite db updated successfully")
-        console.log("update/insert", dbRows.length, "rows")
+
     } catch (err) {
         console.error("Error updating sqlite db", err.message, err.stack)
     }
