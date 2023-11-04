@@ -12,6 +12,7 @@ import { Client } from 'pg';
 import { join } from "path";
 import { buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
+import { showVotesFor } from "./votesFor";
 
 
 type ByContractAndRoundInfoType = {
@@ -47,7 +48,7 @@ async function processMetaVote(allVoters: Voters[]):
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
     // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
-    let dateString = (new Date(Date.now()-30000).toISOString()).slice(0, 10)
+    let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
 
     for (let voter of allVoters) {
@@ -400,7 +401,7 @@ async function analyzeSingleFile(filePath: string) {
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
-const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+export const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "meta-vote.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
@@ -411,5 +412,11 @@ if (fileArgvIndex > 0) {
     analyzeSingleFile(argv[fileArgvIndex + 1])
 }
 else {
-    mainProcess()
+    const voteForInx = argv.findIndex(i => i == "votes-for")
+    if (voteForInx > 0) {
+        showVotesFor(argv[voteForInx + 1])
+    }
+    else {
+        mainProcess()
+    }
 }
