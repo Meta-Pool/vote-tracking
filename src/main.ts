@@ -103,8 +103,12 @@ async function processMetaVote(allVoters: Voters[]):
                 } else if (vp.votable_address == "initiatives") {
                     userTotalVpInAmbassadors += positionVotingPower
                     // get round# from object_id
-                    for (let n = 2; n < 999; n++) {
+                    for (let n = 99; n > 1; n--) {
                         if (vp.votable_object_id.includes(`Round #${n} `) || vp.votable_object_id.includes(`Round #${n}-`)) {
+                            round = n;
+                            break;
+                        }
+                        if (vp.votable_object_id.includes(`Grants #${n} `) || vp.votable_object_id.includes(`Grants #${n}`)) {
                             round = n;
                             break;
                         }
