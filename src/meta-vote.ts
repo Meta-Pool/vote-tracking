@@ -47,7 +47,7 @@ export class MetaVoteContract extends SmartContract {
     // ALL voter info, voter + locking-positions + voting-positions
     async getAllVoters(): Promise<Voters[]> {
         let voters: Voters[] = []
-        const BATCH_SIZE = 150
+        const BATCH_SIZE = 75
         let retrieved = BATCH_SIZE
         while (retrieved == BATCH_SIZE) {
             const batch:Voters[] = await this.view("get_voters", { from_index: voters.length, limit: BATCH_SIZE }) as unknown as Voters[]
