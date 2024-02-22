@@ -218,8 +218,10 @@ async function mainProcess() {
     } catch (err) {
         console.error(err)
     }
-    await updateDbPg(dbRows, dbRows2)
+    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
     await updateDbSqLite(dbRows, dbRows2)
+    // update remote pgDB
+    await updateDbPg(dbRows, dbRows2)
 }
 
 async function pgInsertVotersHighWaterMark(
