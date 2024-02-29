@@ -1,15 +1,15 @@
 import { yton } from "near-api-lite"
-import { MpDaoVoteContract, Voters } from "./contracts/mpdao-vote"
-import { META_VOTE_CONTRACT_ID } from "./main";
+import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote"
+import { MPDAO_VOTE_CONTRACT_ID } from "./main";
 import { mpdao_as_number } from "./util/convert";
 
 export async function showVotesFor(votableId:string) {
-    let metaVote = new MpDaoVoteContract(META_VOTE_CONTRACT_ID)
+    let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
     filterVotesFor(allVoters,votableId)
 }
 
-export async function filterVotesFor(allVoters: Voters[], votableId:string) {
+export async function filterVotesFor(allVoters: VoterInfo[], votableId:string) {
         //---
     let totalLocked = 0
     let totalUnlocking = 0

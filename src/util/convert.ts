@@ -1,17 +1,25 @@
 /**
  * returns mpDao amount as number with decimals 
- * @param mpdaoRawString amount expressed in mpDao without decimal point
+ * @param raw amount expressed in mpDao without decimal point
  */
-export function mpdao_as_number(mpdaoRawString: string) {
-    if (mpdaoRawString.indexOf(".") !== -1) throw new Error("a mpdaoRawString can't have a decimal point: " + mpdaoRawString)
+export function toNumber(raw: string | BigInt, decimals: number) {
+    let mpdaoRawString = raw.toString()
+    if (mpdaoRawString.indexOf(".") !== -1) throw new Error("a mpdaoRaw value can't have a decimal point: " + mpdaoRawString)
     let sign = ""
     if (mpdaoRawString.startsWith("-")) {
         sign = "-"
         mpdaoRawString = mpdaoRawString.slice(1)
     }
-    const precision = 18
-    const decimals = 6
-    const padded = mpdaoRawString.padStart(precision, "0") // at least precision digits
-    const mpDao = padded.slice(0, -decimals) + "." + padded.slice(-precision)
+    const padded = mpdaoRawString.padStart(decimals + 1, "0") // so it ends at least 0.xxx
+    const mpDao = padded.slice(0, -decimals) + "." + padded.slice(-decimals)
     return Number(sign + mpDao)
 }
+
+/**
+ * returns mpDao amount as number with decimals 
+ * @param mpdaoRaw amount expressed in mpDao without decimal point
+ */
+export function mpdao_as_number(mpdaoRaw: string | BigInt) {
+    return toNumber(mpdaoRaw,6)
+}
+

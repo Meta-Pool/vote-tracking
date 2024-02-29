@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { MpDaoVoteContract, Voters } from "./contracts/mpdao-vote";
+import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
@@ -13,7 +13,9 @@ import { join } from "path";
 import { buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
-import { mpdao_as_number } from "./util/convert";
+import { mpdao_as_number, toNumber } from "./util/convert";
+import { migrate } from "./migration/migrate";
+import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 
 
 type ByContractAndRoundInfoType = {
@@ -33,7 +35,7 @@ type MetaVoteMetricsType = {
     votesPerContractAndRound: ByContractAndRoundInfoType[];
 }
 
-async function processMetaVote(allVoters: Voters[]):
+export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     Promise<{
         metrics: MetaVoteMetricsType,
         dbRows: VotersRow[],
@@ -48,6 +50,7 @@ async function processMetaVote(allVoters: Voters[]):
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
+    let countLockedAndUnlocking = 0
     // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
     let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
@@ -55,23 +58,29 @@ async function processMetaVote(allVoters: Voters[]):
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
 
+        if (isDryRun()) console.log("--",voter.voter_id);
         let userTotalVotingPower = 0
         let userTotalMpDaoLocked = 0
         let userTotalMpDaoUnlocking = 0
         let userTotalMpDaoUnlocked = 0
+        let hasLockedOrUnlocking = false
         for (let lp of voter.locking_positions) {
-            const mpdaoAmount = mpdao_as_number(lp.amount)
+            const govTokenAmount = toNumber(lp.amount, decimals)
+            if (isDryRun()) console.log(lp.index, lp.amount, govTokenAmount);
             if (lp.is_locked) {
-                userTotalMpDaoLocked += mpdaoAmount
+                userTotalMpDaoLocked += govTokenAmount
                 userTotalVotingPower += yton(lp.voting_power)
+                hasLockedOrUnlocking = true
             }
             else if (lp.is_unlocked) {
-                userTotalMpDaoUnlocked += mpdaoAmount
+                userTotalMpDaoUnlocked += govTokenAmount
             }
             else {
-                userTotalMpDaoUnlocking += mpdaoAmount
+                userTotalMpDaoUnlocking += govTokenAmount
+                hasLockedOrUnlocking = true
             }
         }
+        if (hasLockedOrUnlocking) countLockedAndUnlocking += 1;
 
         totalVotingPower += userTotalVotingPower
         totalLocked += userTotalMpDaoLocked
@@ -173,6 +182,10 @@ async function processMetaVote(allVoters: Voters[]):
             })
     }
 
+    if (isDryRun()) {
+        console.log("countLockedAndUnlocking", countLockedAndUnlocking)
+    }
+
     return {
         metrics: {
             metaVoteUserCount: allVoters.length,
@@ -189,9 +202,15 @@ async function processMetaVote(allVoters: Voters[]):
 
 }
 
-async function mainProcess() {
+async function mainAsyncProcess() {
 
-    let metaVote = new MpDaoVoteContract(META_VOTE_CONTRACT_ID)
+    const migrateInx = argv.findIndex(i => i == "migrate")
+    if (migrateInx > 0) {
+        await migrate()
+        process.exit(0)
+    }
+
+    let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
 
     {
@@ -401,10 +420,13 @@ async function analyzeSingleFile(filePath: string) {
     console.log(metrics)
 }
 
+// -----------------------------------------------------
+// -----------------------------------------------------
+setGlobalDryRunMode(argv.includes("dry"));
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
-export const META_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
+export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
@@ -419,7 +441,5 @@ else {
     if (voteForInx > 0) {
         showVotesFor(argv[voteForInx + 1])
     }
-    else {
-        mainProcess()
-    }
+    mainAsyncProcess()
 }

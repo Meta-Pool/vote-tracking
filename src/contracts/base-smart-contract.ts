@@ -6,6 +6,9 @@ let globalDryRunMode: boolean = false;
 export function setGlobalDryRunMode(mode:boolean){
     globalDryRunMode = mode;
 }
+export function isDryRun(){
+    return globalDryRunMode ;
+}
 //-----------------------------
 // Base smart-contract proxy class
 // provides constructor, view & call methods

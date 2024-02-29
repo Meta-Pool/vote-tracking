@@ -1,10 +1,10 @@
 import { yton } from "near-api-lite";
 import { FolderData, MetaPipelineContract, ProjectMetadataJson } from "./contracts/meta-pipeline";
-import { Voters } from "./contracts/mpdao-vote";
+import { VoterInfo } from "./contracts/mpdao-vote";
 import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID } from "./main";
 import { getCredentials } from "./util/near";
 
-export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[], useMainnet: boolean) {
+export async function setRecentlyFreezedFoldersVotes(allVoters: VoterInfo[], useMainnet: boolean) {
     const votes: Record<number, bigint> = processVoters(allVoters)
 
     const credentials = getCredentials(META_PIPELINE_OPERATOR_ID)
@@ -57,7 +57,7 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[], useMai
     }
 }
 
-function processVoters(allVoters: Voters[]): Record<number, bigint> {
+function processVoters(allVoters: VoterInfo[]): Record<number, bigint> {
     let output: Record<number, bigint> = {}
     
     for (let voter of allVoters) {
