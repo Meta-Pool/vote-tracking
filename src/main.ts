@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { MetaVoteContract, Voters } from "./contracts/meta-vote";
+import { MpDaoVoteContract, Voters } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
@@ -13,6 +13,7 @@ import { join } from "path";
 import { buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
+import { mpdao_as_number } from "./util/convert";
 
 
 type ByContractAndRoundInfoType = {
@@ -20,7 +21,7 @@ type ByContractAndRoundInfoType = {
     round: number,
     countVoters: number,
     totalVotes: number;
-    proportionalMeta: number;
+    proportionalMpDao: number;
 }
 type MetaVoteMetricsType = {
     metaVoteUserCount: number;
@@ -55,27 +56,27 @@ async function processMetaVote(allVoters: Voters[]):
         if (!voter.locking_positions) continue;
 
         let userTotalVotingPower = 0
-        let userTotalMetaLocked = 0
-        let userTotalMetaUnlocking = 0
-        let userTotalMetaUnlocked = 0
+        let userTotalMpDaoLocked = 0
+        let userTotalMpDaoUnlocking = 0
+        let userTotalMpDaoUnlocked = 0
         for (let lp of voter.locking_positions) {
-            const metaAmount = yton(lp.amount)
+            const mpdaoAmount = mpdao_as_number(lp.amount)
             if (lp.is_locked) {
-                userTotalMetaLocked += metaAmount
+                userTotalMpDaoLocked += mpdaoAmount
                 userTotalVotingPower += yton(lp.voting_power)
             }
             else if (lp.is_unlocked) {
-                userTotalMetaUnlocked += metaAmount
+                userTotalMpDaoUnlocked += mpdaoAmount
             }
             else {
-                userTotalMetaUnlocking += metaAmount
+                userTotalMpDaoUnlocking += mpdaoAmount
             }
         }
 
         totalVotingPower += userTotalVotingPower
-        totalLocked += userTotalMetaLocked
-        totalUnlocking += userTotalMetaUnlocking
-        totalUnlocked += userTotalMetaUnlocked;
+        totalLocked += userTotalMpDaoLocked
+        totalUnlocking += userTotalMpDaoUnlocking
+        totalUnlocked += userTotalMpDaoUnlocked;
 
         let userTotalVpInUse = 0
         let userTotalVpInValidators = 0
@@ -92,7 +93,7 @@ async function processMetaVote(allVoters: Voters[]):
                 if (positionVotingPower == 0) continue;
 
                 // compute proportional meta locked for this vote
-                const proportionalMeta = userTotalMetaLocked * (positionVotingPower / userTotalVotingPower);
+                const proportionalMpDao = userTotalMpDaoLocked * (positionVotingPower / userTotalVotingPower);
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
@@ -126,7 +127,7 @@ async function processMetaVote(allVoters: Voters[]):
                         round,
                         countVoters: 1,
                         totalVotes: positionVotingPower,
-                        proportionalMeta: proportionalMeta
+                        proportionalMpDao: proportionalMpDao
                     })
                     voterCounted[countVoterId] = true
                 }
@@ -136,7 +137,7 @@ async function processMetaVote(allVoters: Voters[]):
                         voterCounted[countVoterId] = true
                     }
                     prev.totalVotes += positionVotingPower
-                    prev.proportionalMeta += proportionalMeta
+                    prev.proportionalMpDao += proportionalMpDao
                 }
             }
 
@@ -145,9 +146,9 @@ async function processMetaVote(allVoters: Voters[]):
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
                 vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
-                meta_locked: Math.trunc(userTotalMetaLocked),
-                meta_unlocking: Math.trunc(userTotalMetaUnlocking),
-                meta_unlocked: Math.trunc(userTotalMetaUnlocked),
+                meta_locked: Math.trunc(userTotalMpDaoLocked), // keep old "meta" name fr backward compat
+                meta_unlocking: Math.trunc(userTotalMpDaoUnlocking),
+                meta_unlocked: Math.trunc(userTotalMpDaoUnlocked),
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
                 vp_in_launches: Math.trunc(userTotalVpInLaunches),
                 vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
@@ -168,7 +169,7 @@ async function processMetaVote(allVoters: Voters[]):
                 round: item.round,
                 countVoters: item.countVoters,
                 totalVotes: Math.round(item.totalVotes),
-                proportionalMeta: Math.round(item.proportionalMeta)
+                proportionalMeta: Math.round(item.proportionalMpDao)
             })
     }
 
@@ -190,7 +191,7 @@ async function processMetaVote(allVoters: Voters[]):
 
 async function mainProcess() {
 
-    let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
+    let metaVote = new MpDaoVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
 
     {
@@ -209,7 +210,7 @@ async function mainProcess() {
     let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
     console.log(metrics)
 
-    writeFileSync("hourly-metrics.json", JSON.stringify({
+    writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
         metaVote: metrics
     }));
 
@@ -403,9 +404,9 @@ async function analyzeSingleFile(filePath: string) {
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
-export const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+export const META_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
-export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "meta-vote.testnet"
+export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
 // process single file: node dist/main.js file xxxx.json

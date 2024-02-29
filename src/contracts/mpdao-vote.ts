@@ -17,7 +17,7 @@ export type Voters = {
     locking_positions: Array<
         {
             index: number;
-            amount: string;
+            amount: string; // mpdao, 6 decimals
             locking_period: number;
             voting_power: string;
             unlocking_started_at: number | null;
@@ -34,7 +34,7 @@ export type Voters = {
         }>;
 };
 
-export class MetaVoteContract extends SmartContract {
+export class MpDaoVoteContract extends SmartContract {
 
     //----------------------------
     // get votes for all items of a specific app

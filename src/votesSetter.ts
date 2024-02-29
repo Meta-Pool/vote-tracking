@@ -1,6 +1,6 @@
 import { yton } from "near-api-lite";
 import { FolderData, MetaPipelineContract, ProjectMetadataJson } from "./contracts/meta-pipeline";
-import { Voters } from "./contracts/meta-vote";
+import { Voters } from "./contracts/mpdao-vote";
 import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID } from "./main";
 import { getCredentials } from "./util/near";
 
@@ -51,7 +51,7 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: Voters[], useMai
     for(let project of projectsToUpdate) {
         // If a project doesn't receive any votes, we put 1 as default value to mark the record as already updated
         const projectVotes = votes[project.id] || BigInt("1")
-        const percentage = projectVotes * BigInt(10 ** 4) / totalVotesInFolder
+        const percentage = totalVotesInFolder==BigInt("0")? 0 : projectVotes * BigInt(10 ** 4) / totalVotesInFolder
         console.log(project.id, projectVotes, Number(percentage.toString()))
         if (useMainnet) await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
     }

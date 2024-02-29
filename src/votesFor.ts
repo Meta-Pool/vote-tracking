@@ -1,9 +1,10 @@
 import { yton } from "near-api-lite"
-import { MetaVoteContract, Voters } from "./contracts/meta-vote"
+import { MpDaoVoteContract, Voters } from "./contracts/mpdao-vote"
 import { META_VOTE_CONTRACT_ID } from "./main";
+import { mpdao_as_number } from "./util/convert";
 
 export async function showVotesFor(votableId:string) {
-    let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
+    let metaVote = new MpDaoVoteContract(META_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
     filterVotesFor(allVoters,votableId)
 }
@@ -27,16 +28,16 @@ export async function filterVotesFor(allVoters: Voters[], votableId:string) {
         let userTotalMetaUnlocking = 0
         let userTotalMetaUnlocked = 0
         for (let lp of voter.locking_positions) {
-            const metaAmount = yton(lp.amount)
+            const mpDaoAmount = mpdao_as_number(lp.amount)
             if (lp.is_locked) {
-                userTotalMetaLocked += metaAmount
+                userTotalMetaLocked += mpDaoAmount
                 userTotalVotingPower += yton(lp.voting_power)
             }
             else if (lp.is_unlocked) {
-                userTotalMetaUnlocked += metaAmount
+                userTotalMetaUnlocked += mpDaoAmount
             }
             else {
-                userTotalMetaUnlocking += metaAmount
+                userTotalMetaUnlocking += mpDaoAmount
             }
         }
 
