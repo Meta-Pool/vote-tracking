@@ -23,3 +23,20 @@ export function mpdao_as_number(mpdaoRaw: string | BigInt) {
     return toNumber(mpdaoRaw,6)
 }
 
+export function addCommas(str: string) {
+    let pre;
+    if (str.startsWith("-")) {
+        str = str.slice(1);
+        pre = "-";
+    }
+    else {
+        pre = "";
+    }
+    const decPointPosition = str.indexOf(".")
+    let n = (decPointPosition == -1 ? str.length : decPointPosition ) - 4
+    while (n >= 0) {
+        str = str.slice(0, n + 1) + "," + str.slice(n + 1)
+        n = n - 3
+    }
+    return pre + str;
+}

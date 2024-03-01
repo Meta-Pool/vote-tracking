@@ -39,13 +39,18 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     Promise<{
         metrics: MetaVoteMetricsType,
         dbRows: VotersRow[],
-        dbRows2: VotersByContractAndRound[]
+        dbRows2: VotersByContractAndRound[],
+        extraMetrics: {
+            totalLockedB: bigint;
+            totalUnlockingB: bigint;
+            totalUnLockedB: bigint,
+        }
     }> {
 
     //---
-    let totalLocked = 0
-    let totalUnlocking = 0
-    let totalUnlocked = 0
+    let totalLocked = BigInt(0)
+    let totalUnlocking = BigInt(0)
+    let totalUnlocked = BigInt(0)
     let totalVotingPower = 0
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
@@ -58,25 +63,23 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
 
-        if (isDryRun()) console.log("--",voter.voter_id);
+        if (isDryRun()) console.log("--", voter.voter_id);
         let userTotalVotingPower = 0
-        let userTotalMpDaoLocked = 0
-        let userTotalMpDaoUnlocking = 0
-        let userTotalMpDaoUnlocked = 0
+        let userTotalMpDaoLocked = BigInt(0)
+        let userTotalMpDaoUnlocking = BigInt(0)
+        let userTotalMpDaoUnlocked = BigInt(0)
         let hasLockedOrUnlocking = false
         for (let lp of voter.locking_positions) {
-            const govTokenAmount = toNumber(lp.amount, decimals)
-            if (isDryRun()) console.log(lp.index, lp.amount, govTokenAmount);
             if (lp.is_locked) {
-                userTotalMpDaoLocked += govTokenAmount
+                userTotalMpDaoLocked += BigInt(lp.amount)
                 userTotalVotingPower += yton(lp.voting_power)
                 hasLockedOrUnlocking = true
             }
             else if (lp.is_unlocked) {
-                userTotalMpDaoUnlocked += govTokenAmount
+                userTotalMpDaoUnlocked += BigInt(lp.amount)
             }
             else {
-                userTotalMpDaoUnlocking += govTokenAmount
+                userTotalMpDaoUnlocking += BigInt(lp.amount)
                 hasLockedOrUnlocking = true
             }
         }
@@ -102,7 +105,7 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
                 if (positionVotingPower == 0) continue;
 
                 // compute proportional meta locked for this vote
-                const proportionalMpDao = userTotalMpDaoLocked * (positionVotingPower / userTotalVotingPower);
+                const proportionalMpDao = toNumber(userTotalMpDaoLocked, decimals) * (positionVotingPower / userTotalVotingPower);
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
@@ -155,9 +158,9 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
                 vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
-                meta_locked: Math.trunc(userTotalMpDaoLocked), // keep old "meta" name fr backward compat
-                meta_unlocking: Math.trunc(userTotalMpDaoUnlocking),
-                meta_unlocked: Math.trunc(userTotalMpDaoUnlocked),
+                meta_locked: Math.trunc(toNumber(userTotalMpDaoLocked, decimals)), // keep old "meta" name fr backward compat
+                meta_unlocking: Math.trunc(toNumber(userTotalMpDaoUnlocking, decimals)),
+                meta_unlocked: Math.trunc(toNumber(userTotalMpDaoUnlocked, decimals)),
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
                 vp_in_launches: Math.trunc(userTotalVpInLaunches),
                 vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
@@ -189,15 +192,21 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     return {
         metrics: {
             metaVoteUserCount: allVoters.length,
-            totalLocked: totalLocked,
-            totalUnlocking: totalUnlocking,
-            totalUnLocked: totalUnlocked,
+            totalLocked: toNumber(totalLocked, decimals),
+            totalUnlocking: toNumber(totalUnlocking, decimals),
+            totalUnLocked: toNumber(totalUnlocked, decimals),
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
         },
         dbRows,
-        dbRows2
+        dbRows2,
+        extraMetrics: {
+            totalLockedB: totalLocked,
+            totalUnlockingB: totalUnlocking,
+            totalUnLockedB: totalUnlocked,
+
+        }
     }
 
 }

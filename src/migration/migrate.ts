@@ -1,13 +1,15 @@
 import { yton } from "near-api-lite";
 import { MpDaoVoteContract, VoterInfo, uniqueNewLp, uniqueOldLp } from "../contracts/mpdao-vote";
 import { MPDAO_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
-import { mpdao_as_number } from "../util/convert";
+import { addCommas, mpdao_as_number, toNumber } from "../util/convert";
 import { getCredentials } from "../util/near";
+import { Nep141 } from "../contracts/NEP-141";
 
 export async function migrate() {
     console.log("starting migration")
 
     const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+    const MPDAO_TOKEN_CONTRACT_ID = useMainnet ? "mpdao-token.near" : "mpdao-token.testnet"
 
     const oldMetaVote = new MpDaoVoteContract(OLD_META_VOTE_CONTRACT_ID)
     const credentials = getCredentials(MPDAO_VOTE_CONTRACT_ID)
@@ -99,22 +101,26 @@ export async function migrate() {
 
     }
     console.log("------")
-    console.log("countMigrated this run", countMigrated,"totalNewLockedMpdaoAmount", totalNewLockedMpdaoAmount.toString(), mpdao_as_number(totalNewLockedMpdaoAmount));
+    console.log("countMigrated this run", countMigrated, "totalNewLockedMpdaoAmount", totalNewLockedMpdaoAmount.toString(), mpdao_as_number(totalNewLockedMpdaoAmount));
     console.log("------")
     console.log("Old data analytics")
-    let { metrics, dbRows, dbRows2 } = await processMetaVote(allOldVoters, 24);
+    let { metrics, dbRows, dbRows2, extraMetrics } = await processMetaVote(allOldVoters, 24);
     console.log(metrics)
+    console.log(extraMetrics)
     console.log("old totalLockedAndUnlocking", metrics.totalLocked + metrics.totalUnlocking)
     console.log("------")
     // re-read
     const allNewVotersAfter = await newMetaVote.getAllVoters();
     console.log("New data analytics")
-    let { metrics:metrics2, dbRows:d1, dbRows2:d2 } = await processMetaVote(allNewVotersAfter, 6);
+    let { metrics: metrics2, dbRows: d1, dbRows2: d2, extraMetrics: newExtraMetrics } = await processMetaVote(allNewVotersAfter, 6);
     console.log(metrics2)
-    
+    console.log(newExtraMetrics)
+
+    const mpdaoToken = new Nep141(MPDAO_TOKEN_CONTRACT_ID)
+    const mpdaoBalanceVoteContract = BigInt(await mpdaoToken.ft_balance_of(MPDAO_VOTE_CONTRACT_ID))
+    const missing = newExtraMetrics.totalLockedB + newExtraMetrics.totalUnlockingB - mpdaoBalanceVoteContract
     console.log("------")
     console.log()
-    console.log("TRANSFER ", totalNewLockedMpdaoAmount.toString(), " MPDAO TO ", newMetaVote.contract_account)
+    console.log("TRANSFER ", missing, " MPDAO TO ", newMetaVote.contract_account, "~", addCommas(toNumber(missing, 6).toFixed(6)))
     console.log("------")
-
 }
