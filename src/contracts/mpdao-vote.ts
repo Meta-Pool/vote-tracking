@@ -35,8 +35,15 @@ export type VoterInfo = {
         }>;
 };
 
-export function uniqueLp(lp: LockingPosition): string {
+// lp.amount has 6 decimals
+export function uniqueNewLp(lp: LockingPosition): string {
     return `${lp.locking_period}|${lp.amount}|${lp.is_locked}|${lp.is_unlocking}|${lp.is_unlocked}|${lp.unlocking_started_at}`
+}
+// lp.amount has 24 decimals, normalize to 6
+export function uniqueOldLp(lp: LockingPosition): string {
+    const normalizedAmount: string = lp.amount.slice(0, -18)
+    const normalizedPeriod = lp.locking_period == 0 ? 60 : lp.locking_period;
+    return `${normalizedPeriod}|${normalizedAmount}|${lp.is_locked}|${lp.is_unlocking}|${lp.is_unlocked}|${lp.unlocking_started_at}`
 }
 
 export class MpDaoVoteContract extends SmartContract {
@@ -62,7 +69,7 @@ export class MpDaoVoteContract extends SmartContract {
         return voters
     }
 
-    async create(voter: VoterInfo) {
-        return this.call("create", { voter });
+    async migration_create(data: VoterInfo) {
+        return this.call("migration_create", { data });
     }
 }

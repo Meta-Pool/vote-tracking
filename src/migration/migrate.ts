@@ -1,7 +1,8 @@
 import { yton } from "near-api-lite";
-import { MpDaoVoteContract, VoterInfo, uniqueLp } from "../contracts/mpdao-vote";
+import { MpDaoVoteContract, VoterInfo, uniqueNewLp, uniqueOldLp } from "../contracts/mpdao-vote";
 import { MPDAO_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
 import { mpdao_as_number } from "../util/convert";
+import { getCredentials } from "../util/near";
 
 export async function migrate() {
     console.log("starting migration")
@@ -9,7 +10,8 @@ export async function migrate() {
     const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 
     const oldMetaVote = new MpDaoVoteContract(OLD_META_VOTE_CONTRACT_ID)
-    const newMetaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+    const credentials = getCredentials(MPDAO_VOTE_CONTRACT_ID)
+    const newMetaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID, credentials.account_id, credentials.private_key)
     const allOldVoters = await oldMetaVote.getAllVoters();
     const allNewVoters = await newMetaVote.getAllVoters();
 
@@ -45,8 +47,11 @@ export async function migrate() {
         voterToCreate.locking_positions = [] // push only the ones to create
         voterToCreate.vote_positions = [] // push only the ones to create
 
+        if (oldVoter.voter_id == "lucio.testnet") {
+            console.log("DEBUG:", oldVoter.voter_id)
+        }
         // check if already exists
-        let newVoter = allNewVoters.find(i => i.voter_id = oldVoter.voter_id)
+        let newVoter = allNewVoters.find(i => i.voter_id == oldVoter.voter_id)
         if (!newVoter) {
             // not migrated yet
             newVoter = { voter_id: oldVoter.voter_id, voting_power: "0", locking_positions: [], vote_positions: [] }
@@ -56,13 +61,16 @@ export async function migrate() {
                 continue // do not migrate unlocked positions
             }
             // migrate lp
-            let migratedLp = newVoter.locking_positions.find(i => uniqueLp(i) == uniqueLp(oldLp));
+            const newLockedMpdaoAmount = BigInt(oldLp.amount) / BigInt("1" + "0".repeat(18))
+            let migratedLp = newVoter.locking_positions.find(i => uniqueNewLp(i) == uniqueOldLp(oldLp));
             if (!migratedLp) {
                 migratedLp = Object.assign({}, oldLp);
                 // convert META to mpDAO, by truncating 24 decimals to 6 decimals
-                const newLockedMpdaoAmount = BigInt(oldLp.amount) / BigInt("1" + "0".repeat(18))
                 totalNewLockedMpdaoAmount += newLockedMpdaoAmount
                 migratedLp.amount = newLockedMpdaoAmount.toString();
+                if (migratedLp.locking_period == 0) { // testnet invalid cases, use 60d/1x
+                    migratedLp.locking_period = 60
+                }
                 newVoter.locking_positions.push(migratedLp)
                 voterToCreate.locking_positions.push(migratedLp)
             }
@@ -81,7 +89,7 @@ export async function migrate() {
         if (voterToCreate.locking_positions.length > 0 || voterToCreate.vote_positions.length > 0) {
             console.log("migrating", voterToCreate.voter_id)
             countMigrated += 1
-            await newMetaVote.create(voterToCreate);
+            await newMetaVote.migration_create(voterToCreate);
         }
 
         // totalVotingPower += userTotalVotingPower
@@ -90,14 +98,22 @@ export async function migrate() {
         // totalUnlocked += userTotalMetaUnlocked;
 
     }
+    console.log("------")
+    console.log("countMigrated this run", countMigrated,"totalNewLockedMpdaoAmount", totalNewLockedMpdaoAmount.toString(), mpdao_as_number(totalNewLockedMpdaoAmount));
+    console.log("------")
     console.log("Old data analytics")
     let { metrics, dbRows, dbRows2 } = await processMetaVote(allOldVoters, 24);
-    metrics.votesPerContractAndRound = []
     console.log(metrics)
-    console.log("------")
-    console.log("countMigrated", countMigrated)
     console.log("old totalLockedAndUnlocking", metrics.totalLocked + metrics.totalUnlocking)
-    console.log("totalNewLockedMpdaoAmount", totalNewLockedMpdaoAmount.toString(), mpdao_as_number(totalNewLockedMpdaoAmount))
+    console.log("------")
+    // re-read
+    const allNewVotersAfter = await newMetaVote.getAllVoters();
+    console.log("New data analytics")
+    let { metrics:metrics2, dbRows:d1, dbRows2:d2 } = await processMetaVote(allNewVotersAfter, 6);
+    console.log(metrics2)
+    
+    console.log("------")
+    console.log()
     console.log("TRANSFER ", totalNewLockedMpdaoAmount.toString(), " MPDAO TO ", newMetaVote.contract_account)
     console.log("------")
 

@@ -7,6 +7,7 @@
     "build": "tsc -b --verbose",
     "test": "npm run build && node dist/main.js test",
     "dry": "npm run build && node dist/main.js dry test migrate",
+    "test-migrate": "npm run build && node dist/main.js test migrate",
     "migrate": "npm run build && node dist/main.js migrate",
     "start": "npm run build && echo 'check scripts/every-hour.sh, include it in crontab'"
   },
