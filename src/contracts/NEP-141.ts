@@ -32,8 +32,8 @@ export class Nep141 extends SmartContract {
         return this.call("storage_deposit", { account_id: accountId }, undefined, yoctos)
     }
 
-    async ft_transfer(receiver_id: string, yoctos: U128String, memo?: string): Promise<void> {
-        return this.call("ft_transfer", { receiver_id: receiver_id, amount: yoctos, memo: memo }, 50, "1"); //one-yocto attached
+    async ft_transfer(receiver_id: string, units: string|bigint, memo?: string): Promise<void> {
+        return this.call("ft_transfer", { receiver_id: receiver_id, amount: units.toString(), memo: memo }, 50, "1"); //one-yocto attached
     }
 
     ft_balance_of(account_id: string): Promise<U128String> {
@@ -45,10 +45,10 @@ export class Nep141 extends SmartContract {
     //     return this.view("ft_balance_of", { account_id: this.signer?.getAccountId() })
     // }
 
-    ft_transfer_call(receiver_contract_account_id: string, amountYoctos: string, msg: string, memo?: string): Promise<string> {
+    ft_transfer_call(receiver_contract_account_id: string, amountUnits: string|bigint, msg: string, memo?: string): Promise<string> {
         return this.call("ft_transfer_call", {
             receiver_id: receiver_contract_account_id,
-            amount: amountYoctos,
+            amount: amountUnits.toString(),
             memo,
             msg
         }, 290, "1"); //one-yocto attached

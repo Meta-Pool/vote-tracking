@@ -1,23 +1,28 @@
 import { yton } from "near-api-lite";
 import { MpDaoVoteContract, VoterInfo, uniqueNewLp, uniqueOldLp } from "../contracts/mpdao-vote";
-import { MPDAO_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
+import { META_POOL_DAO_ACCOUNT, MPDAO_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
 import { addCommas, mpdao_as_number, toNumber } from "../util/convert";
 import { getCredentials } from "../util/near";
 import { Nep141 } from "../contracts/NEP-141";
 
-export async function migrate() {
-    console.log("starting migration")
-
+function getContracts() {
     const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
-    const MPDAO_TOKEN_CONTRACT_ID = useMainnet ? "mpdao-token.near" : "mpdao-token.testnet"
 
     const oldMetaVote = new MpDaoVoteContract(OLD_META_VOTE_CONTRACT_ID)
     const credentials = getCredentials(MPDAO_VOTE_CONTRACT_ID)
     const newMetaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID, credentials.account_id, credentials.private_key)
+
+    return { oldMetaVote, newMetaVote }
+}
+
+export async function migrateLpVp() {
+    console.log("starting migration lp & vp")
+
+    const { oldMetaVote, newMetaVote } = getContracts()
     const allOldVoters = await oldMetaVote.getAllVoters();
     const allNewVoters = await newMetaVote.getAllVoters();
 
-    // process
+    // migrate lp and vp
     let countMigrated = 0
     let totalNewLockedMpdaoAmount = BigInt(0)
     for (let oldVoter of allOldVoters) {
@@ -116,11 +121,40 @@ export async function migrate() {
     console.log(metrics2)
     console.log(newExtraMetrics)
 
+    const MPDAO_TOKEN_CONTRACT_ID = useMainnet ? "mpdao-token.near" : "mpdao-token.testnet"
     const mpdaoToken = new Nep141(MPDAO_TOKEN_CONTRACT_ID)
     const mpdaoBalanceVoteContract = BigInt(await mpdaoToken.ft_balance_of(MPDAO_VOTE_CONTRACT_ID))
-    const missing = newExtraMetrics.totalLockedB + newExtraMetrics.totalUnlockingB - mpdaoBalanceVoteContract
+    const missingMpDaoTokenUnits = newExtraMetrics.totalLockedB + newExtraMetrics.totalUnlockingB - mpdaoBalanceVoteContract
     console.log("------")
-    console.log()
-    console.log("TRANSFER ", missing, " MPDAO TO ", newMetaVote.contract_account, "~", addCommas(toNumber(missing, 6).toFixed(6)))
+    console.log("contract mpDAO balance", addCommas(mpdao_as_number(mpdaoBalanceVoteContract).toFixed(6)))
+    console.log("TRANSFER ", missingMpDaoTokenUnits, " MPDAO TO ", newMetaVote.contract_account, "~", addCommas(toNumber(missingMpDaoTokenUnits, 6).toFixed(6)))
     console.log("------")
+    if (missingMpDaoTokenUnits > BigInt(0)) {
+        console.log("try transfer from", META_POOL_DAO_ACCOUNT)
+        const credentials = getCredentials(META_POOL_DAO_ACCOUNT)
+        const mpdaoTokenSigner = new Nep141(MPDAO_TOKEN_CONTRACT_ID, credentials.account_id, credentials.private_key)
+        await mpdaoTokenSigner.storage_deposit(newMetaVote.contract_account)
+        await mpdaoTokenSigner.ft_transfer(newMetaVote.contract_account, missingMpDaoTokenUnits)
+    }
+}
+
+// migrate associated user data
+export async function migrateAud() {
+    console.log("starting migration of associated user data")
+
+    const { oldMetaVote, newMetaVote } = getContracts()
+
+    const BATCH_SIZE = 50
+    let retrieved = BATCH_SIZE
+    let fromIndex = 0
+    while (retrieved == BATCH_SIZE) {
+        const dataBatch = await oldMetaVote.get_airdrop_accounts(fromIndex, BATCH_SIZE)
+        retrieved = dataBatch.length
+        if (retrieved) {
+            await newMetaVote.migration_set_associated_data(dataBatch)
+            console.log(dataBatch.length, "migrated")
+            fromIndex += dataBatch.length
+        }
+    }
+    console.log(fromIndex, "total migrated")
 }

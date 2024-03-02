@@ -13,8 +13,8 @@ import { join } from "path";
 import { buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
-import { mpdao_as_number, toNumber } from "./util/convert";
-import { migrate } from "./migration/migrate";
+import { toNumber } from "./util/convert";
+import { migrateAud, migrateLpVp } from "./migration/migrate";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 
 
@@ -213,9 +213,14 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
 
 async function mainAsyncProcess() {
 
-    const migrateInx = argv.findIndex(i => i == "migrate")
-    if (migrateInx > 0) {
-        await migrate()
+    const migrateLpVpInx = argv.findIndex(i => i == "migrate-lp-vp")
+    if (migrateLpVpInx > 0) {
+        await migrateLpVp()
+        process.exit(0)
+    }
+    const migrateAudInx = argv.findIndex(i => i == "migrate-aud")
+    if (migrateAudInx > 0) {
+        await migrateAud()
         process.exit(0)
     }
 
@@ -438,6 +443,7 @@ if (useTestnet) console.log("USING TESTNET")
 export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
+export const META_POOL_DAO_ACCOUNT = useMainnet ? "meta-pool-dao.near" : "meta-pool-dao.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
 // process single file: node dist/main.js file xxxx.json

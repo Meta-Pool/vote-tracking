@@ -72,4 +72,13 @@ export class MpDaoVoteContract extends SmartContract {
     async migration_create(data: VoterInfo) {
         return this.call("migration_create", { data });
     }
+
+    async get_airdrop_accounts(fromIndex: number, limit: number): Promise<[]> {
+        return this.view("get_airdrop_accounts", { from_index: fromIndex, limit }) as unknown as []
+    }
+
+    async migration_set_associated_data(usersData: []) { // data: Vec<(AccountId, String)>
+        return this.call("migration_set_associated_data", { data: usersData });
+    }
+
 }
