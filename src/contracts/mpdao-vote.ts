@@ -1,4 +1,7 @@
+import { yton } from 'near-api-lite';
+import { AvailableClaims } from '../util/tables.js';
 import { SmartContract, U128String } from './base-smart-contract.js';
+import { isoTruncDate } from '../util/convert.js';
 
 export type VotableObjectJSON = {
     votable_contract: String;
@@ -68,6 +71,23 @@ export class MpDaoVoteContract extends SmartContract {
         //console.log("total voters", voters.length)
         return voters
     }
+
+    // ALL st_near claims
+    async getAllStnearClaims(): Promise<AvailableClaims[]> {
+        let claims: AvailableClaims[] = []
+        const isoDate = isoTruncDate()
+        const BATCH_SIZE = 75
+        let retrieved = BATCH_SIZE
+        while (retrieved == BATCH_SIZE) {
+            const batch: [] = await this.view("get_stnear_claims", { from_index: claims.length, limit: BATCH_SIZE }) as unknown as []
+            retrieved = batch.length
+            for(let tuple of batch) {
+                claims.push({account_id:tuple[0],date:isoDate, token_code:0, claimable_amount: yton(tuple[1]) })
+            }
+        }
+        return claims
+    }
+    
 
     async migration_create(data: VoterInfo) {
         return this.call("migration_create", { data });

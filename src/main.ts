@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
+import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3'
 import { Database as SqLiteDatabase } from "sqlite3";
@@ -10,10 +10,10 @@ import { Database as SqLiteDatabase } from "sqlite3";
 
 import { Client } from 'pg';
 import { join } from "path";
-import { buildInsert } from "./util/sqlBuilder";
+import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
-import { toNumber } from "./util/convert";
+import { isoTruncDate, toNumber } from "./util/convert";
 import { migrateAud, migrateLpVp } from "./migration/migrate";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 
@@ -59,6 +59,8 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
     let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
+
+    // NOTE: only users WITH LOCKING POSITIONS are registered here
 
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
@@ -164,7 +166,6 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
                 vp_in_launches: Math.trunc(userTotalVpInLaunches),
                 vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
-                //vp_in_others: Math.trunc(userTotalVpInOther),
             })
 
         }
@@ -252,33 +253,43 @@ async function mainAsyncProcess() {
     } catch (err) {
         console.error(err)
     }
+
+    const availableClaimsRows = await metaVote.getAllStnearClaims()
     // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    await updateDbSqLite(dbRows, dbRows2)
+    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
     // update remote pgDB
-    await updateDbPg(dbRows, dbRows2)
+    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
 }
+
+async function pgInsertOnConflict(client: Client, table: string, onConflict: OnConflictArgs, dbRows: Record<string, any>[]) {
+    await client.query("BEGIN TRANSACTION");
+    let errorReported = false
+    for (const row of dbRows) {
+        const { statement, values } = buildInsert("pg",
+            "insert", table, row, onConflict)
+        try {
+            await client.query(statement, values);
+        } catch (err) {
+            console.error(`inserting on ${table}`)
+            console.error('An error occurred', err);
+            console.error(statement)
+            console.error(values)
+            errorReported = true;
+            break;
+        }
+    }
+    await client.query(errorReported ? "ROLLBACK" : "COMMIT");
+}
+
 
 async function pgInsertVotersHighWaterMark(
     client: Client,
     dbRows: VotersRow[]
 ) {
-    for (const row of dbRows) {
-        const { statement, values } = buildInsert("pg",
-            "insert", "voters",
-            row,
-            {
-                onConflictArgument: "(date,account_id)",
-                onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use"
-            })
-        try {
-            await client.query(statement, values);
-        } catch (err) {
-            console.error('An error occurred', err);
-            console.error(statement)
-            console.error(values)
-            break;
-        }
-    }
+    await pgInsertOnConflict(client, "voters", {
+        onConflictArgument: "(date,account_id)",
+        onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use"
+    }, dbRows)
 }
 
 // async function pgInsertVotersHighWaterMark(
@@ -337,26 +348,13 @@ async function pgInsertVotersPerContract(
     client: Client,
     dbRows: VotersByContractAndRound[]
 ) {
-    for (const row of dbRows) {
-        const { statement, values } = buildInsert("pg",
-            "insert", "voters_per_day_contract_round",
-            row,
-            {
-                onConflictArgument: "(date,contract,round)",
-                onConflictCondition: ""
-            })
-        try {
-            await client.query(statement, values);
-        } catch (err) {
-            console.error('An error occurred', err);
-            console.error(statement)
-            console.error(values)
-            break;
-        }
-    }
+    await pgInsertOnConflict(client, "voters_per_day_contract_round", {
+        onConflictArgument: "(date,contract,round)",
+        onConflictCondition: ""
+    }, dbRows)
 }
 
-async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
+async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows:AvailableClaims[]) {
     console.log("Updating pg db")
     try {
         const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
@@ -374,19 +372,20 @@ async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractA
         console.log("db:", client.database)
         // Connect & create tables if not exist
         await client.connect();
-        await client.query(CREATE_TABLE_VOTERS)
-        await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND)
+        await prepareDB(client)
         // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
         // so we store the high-water mark for the voter/day
-        await client.query("BEGIN TRANSACTION");
         await pgInsertVotersHighWaterMark(client, dbRows);
-        await client.query("COMMIT");
         console.log(client.database, "pg update/insert voters", dbRows.length, "rows")
 
-        await client.query("BEGIN TRANSACTION");
         await pgInsertVotersPerContract(client, byContractRows);
-        await client.query("COMMIT");
         console.log(client.database, "pg update/insert voters_per_day_contract_round", byContractRows.length, "rows")
+
+        await pgInsertOnConflict(client, "available_claims", {
+            onConflictArgument: "(date, account_id, token_code)",
+            onConflictCondition: "WHERE excluded.claimable_amount > available_claims.claimable_amount"
+        }, claimableRows)
+        console.log(client.database, "pg update/insert available_claims", claimableRows.length, "rows")
 
         await client.end();
 
@@ -396,14 +395,42 @@ async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractA
     }
 }
 
-async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
+async function prepareDB(client: sq3.CommonSQLClient) {
+
+    await client.query(CREATE_TABLE_APP_DEB_VERSION);
+    const result = await client.query(`select max(version) version from app_db_version where app_code='${APP_CODE}'`);
+    let version = result.rows[0].version;
+    if (version == null) { // no rows
+        await client.query(`insert into app_db_version(app_code,version,date_updated) values ('${APP_CODE}',1,'${isoTruncDate()}')`);
+        version = 1
+    }
+    console.log("DB version:", version)
+
+    // create tables if not exists
+    await client.query(CREATE_TABLE_VOTERS);
+    await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
+    await client.query(CREATE_TABLE_AVAILABLE_CLAIMS);
+
+    // UPGRADE DB TABLES VERSION if required
+    // if (version == 1) {
+    //     // upgrade to version 2
+    //     await client.query("ALTER TABLE voters add column data_xxxxxx DOUBLE PRECISION")
+    //     await client.query(`update app_db_version set version=2, date_updated='${ISOTruncDate()}' where app_code='${APP_CODE}'`);
+    //     version = 2
+    //     console.log("DB tables UPDATED to version:", version)
+    // }
+}
+
+
+async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating sqlite db")
     try {
         // Connect & create tables if not exist
         const DB_FILE = env.DB || "voters.db3"
+        console.log("SQLite db file", DB_FILE)
         let db: SqLiteDatabase = await sq3.open(DB_FILE)
-        await sq3.run(db, CREATE_TABLE_VOTERS);
-        await sq3.run(db, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
+        let client = new sq3.SQLiteClient(db)
+        await prepareDB(client)
         // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
         // so we store the high-water mark for the voter/day
         await sq3.insertOnConflictUpdate(db, "voters", dbRows,
@@ -412,7 +439,7 @@ async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContr
                 onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use"
             }
         );
-        console.log("sq3 update/insert", dbRows.length, "rows")
+        console.log("sq3 update/insert voters", dbRows.length, "rows")
 
         await sq3.insertOnConflictUpdate(db, "voters_per_day_contract_round", byContractRows,
             {
@@ -421,6 +448,15 @@ async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContr
             }
         );
         console.log("sq3 update/insert voters_per_day_contract_round", byContractRows.length, "rows")
+
+        await sq3.insertOnConflictUpdate(db, "available_claims", claimableRows,
+            {
+                onConflictArgument: "",
+                onConflictCondition: "where excluded.claimable_amount > available_claims.claimable_amount"
+            }
+        );
+        console.log("sq3 update/insert available_claims", claimableRows.length, "rows")
+
         console.log("sqlite db updated successfully")
 
     } catch (err) {

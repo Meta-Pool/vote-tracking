@@ -40,3 +40,5 @@ export function addCommas(str: string) {
     }
     return pre + str;
 }
+
+export function isoTruncDate() { return new Date().toISOString().slice(0, 10) }
