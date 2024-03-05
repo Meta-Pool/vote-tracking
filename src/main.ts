@@ -16,6 +16,8 @@ import { showVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
 import { migrateAud, migrateLpVp } from "./migration/migrate";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
+import { showMigrated } from "./migration/show-migrated";
+import { showClaimsStNear } from "./claims/show-claims-stnear";
 
 
 type ByContractAndRoundInfoType = {
@@ -210,55 +212,6 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
         }
     }
 
-}
-
-async function mainAsyncProcess() {
-
-    const migrateLpVpInx = argv.findIndex(i => i == "migrate-lp-vp")
-    if (migrateLpVpInx > 0) {
-        await migrateLpVp()
-        process.exit(0)
-    }
-    const migrateAudInx = argv.findIndex(i => i == "migrate-aud")
-    if (migrateAudInx > 0) {
-        await migrateAud()
-        process.exit(0)
-    }
-
-    let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
-    const allVoters = await metaVote.getAllVoters();
-
-    {
-        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
-        const monthDir = dateIsoFile.slice(0, 7)
-        if (!existsSync(monthDir)) {
-            mkdirSync(monthDir)
-        }
-        try {
-            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
-        } catch (ex) {
-            console.error(ex)
-        }
-    }
-
-    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
-    console.log(metrics)
-
-    writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
-        metaVote: metrics
-    }));
-
-    try {
-        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
-    } catch (err) {
-        console.error(err)
-    }
-
-    const availableClaimsRows = await metaVote.getAllStnearClaims()
-    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
-    // update remote pgDB
-    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
 }
 
 async function pgInsertOnConflict(client: Client, table: string, onConflict: OnConflictArgs, dbRows: Record<string, any>[]) {
@@ -470,27 +423,93 @@ async function analyzeSingleFile(filePath: string) {
     console.log(metrics)
 }
 
+async function mainAsyncProcess() {
+
+    const fileArgvIndex = argv.findIndex(i => i == "file")
+    if (fileArgvIndex > 0) {
+        // process single file: node dist/main.js file xxxx.json
+        await analyzeSingleFile(argv[fileArgvIndex + 1])
+        return
+    }
+    const voteForInx = argv.findIndex(i => i == "votes-for")
+    if (voteForInx > 0) {
+        await showVotesFor(argv[voteForInx + 1])
+        return
+    }
+    const showMigratedInx = argv.findIndex(i => i == "show-migrated")
+    if (showMigratedInx > 0) {
+        await showMigrated()
+        return
+    }
+    const showClaimInx = argv.findIndex(i => i == "show-claims-stnear")
+    if (showClaimInx > 0) {
+        await showClaimsStNear()
+        return
+    }
+    const migrateAudInx = argv.findIndex(i => i == "migrate-aud")
+    if (migrateAudInx > 0) {
+        await migrateAud()
+        return
+    }
+    // const migrateLpVpInx = argv.findIndex(i => i == "migrate-lp-vp")
+    // if (migrateLpVpInx > 0) {
+    //     await migrateLpVp()
+    //     return
+    // }
+
+    let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+    const allVoters = await metaVote.getAllVoters();
+    
+    if (argv.findIndex(i => i == "show-voters")) {
+        console.log(JSON.stringify(allVoters,undefined,4))
+        return
+    }
+
+    {
+        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
+        const monthDir = dateIsoFile.slice(0, 7)
+        if (!existsSync(monthDir)) {
+            mkdirSync(monthDir)
+        }
+        try {
+            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
+        } catch (ex) {
+            console.error(ex)
+        }
+    }
+
+    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
+    console.log(metrics)
+
+    writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
+        metaVote: metrics
+    }));
+
+    try {
+        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
+    } catch (err) {
+        console.error(err)
+    }
+
+    const availableClaimsRows = await metaVote.getAllStnearClaims()
+    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
+    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
+    // update remote pgDB
+    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+}
+
 // -----------------------------------------------------
 // -----------------------------------------------------
+console.log(argv)
 setGlobalDryRunMode(argv.includes("dry"));
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
 export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
+export const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
 export const META_POOL_DAO_ACCOUNT = useMainnet ? "meta-pool-dao.near" : "meta-pool-dao.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
-// process single file: node dist/main.js file xxxx.json
-const fileArgvIndex = argv.findIndex(i => i == "file")
-if (fileArgvIndex > 0) {
-    analyzeSingleFile(argv[fileArgvIndex + 1])
-}
-else {
-    const voteForInx = argv.findIndex(i => i == "votes-for")
-    if (voteForInx > 0) {
-        showVotesFor(argv[voteForInx + 1])
-    }
-    mainAsyncProcess()
-}
+mainAsyncProcess()

@@ -82,12 +82,26 @@ export class MpDaoVoteContract extends SmartContract {
             const batch: [] = await this.view("get_stnear_claims", { from_index: claims.length, limit: BATCH_SIZE }) as unknown as []
             retrieved = batch.length
             for(let tuple of batch) {
+                // returned with current date to be stored in the tracking DB
                 claims.push({account_id:tuple[0],date:isoDate, token_code:0, claimable_amount: yton(tuple[1]) })
             }
         }
         return claims
     }
     
+    // ALL migrated users [[account,amount_meta],...], (method existent only in the old contract using $META token)
+    async getAllMigratedUsers(): Promise<String[]> {
+        let migratedUserTuples : String[] = []
+        const isoDate = isoTruncDate()
+        const BATCH_SIZE = 75
+        let retrieved = BATCH_SIZE
+        while (retrieved == BATCH_SIZE) {
+            const batch = await this.view("get_migrated_users", { from_index: migratedUserTuples.length, limit: BATCH_SIZE }) as unknown as String[]
+            retrieved = batch.length
+            migratedUserTuples = migratedUserTuples.concat(batch)
+        }
+        return migratedUserTuples
+    }
 
     async migration_create(data: VoterInfo) {
         return this.call("migration_create", { data });

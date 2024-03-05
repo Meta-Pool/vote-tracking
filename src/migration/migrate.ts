@@ -1,12 +1,11 @@
 import { yton } from "near-api-lite";
 import { MpDaoVoteContract, VoterInfo, uniqueNewLp, uniqueOldLp } from "../contracts/mpdao-vote";
-import { META_POOL_DAO_ACCOUNT, MPDAO_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
+import { META_POOL_DAO_ACCOUNT, MPDAO_VOTE_CONTRACT_ID, OLD_META_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
 import { addCommas, mpdao_as_number, toNumber } from "../util/convert";
 import { getCredentials } from "../util/near";
 import { Nep141 } from "../contracts/NEP-141";
 
-function getContracts() {
-    const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+export function getContracts() {
 
     const oldMetaVote = new MpDaoVoteContract(OLD_META_VOTE_CONTRACT_ID)
     const credentials = getCredentials(MPDAO_VOTE_CONTRACT_ID)
