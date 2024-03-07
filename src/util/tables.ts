@@ -20,6 +20,7 @@ export type VotersRow = {
   account_id: string;
   vp_in_use: number;
   vp_idle: number;
+  vp_for_payment: number;
   meta_locked: number;
   meta_unlocking: number;
   meta_unlocked: number;

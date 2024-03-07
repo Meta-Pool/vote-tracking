@@ -63,9 +63,13 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     let dbRows: VotersRow[] = []
 
     // NOTE: only users WITH LOCKING POSITIONS are registered here
+    // migration grace period (no need to vote to gey paid) until July 31st
+    const isGracePeriod = isoTruncDate() < "2024-08"
+    const extendGracePeriodForEthBased = true
 
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
+        const voterIsEthMirror = voter.voter_id.endsWith(".evmp.near") || voter.voter_id.endsWith(".evmp.testnet")
 
         if (isDryRun()) console.log("--", voter.voter_id);
         let userTotalVotingPower = 0
@@ -157,12 +161,16 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
                 }
             }
 
+            const vp_for_payment = (isGracePeriod || (voterIsEthMirror && extendGracePeriodForEthBased)) ?
+                userTotalVotingPower
+                : userTotalVpInUse;
             dbRows.push({
                 date: dateString,
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
                 vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
-                meta_locked: Math.trunc(toNumber(userTotalMpDaoLocked, decimals)), // keep old "meta" name fr backward compat
+                vp_for_payment: vp_for_payment,
+                meta_locked: Math.trunc(toNumber(userTotalMpDaoLocked, decimals)), // keep old "meta" name for backward compat
                 meta_unlocking: Math.trunc(toNumber(userTotalMpDaoUnlocking, decimals)),
                 meta_unlocked: Math.trunc(toNumber(userTotalMpDaoUnlocked, decimals)),
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
@@ -307,7 +315,7 @@ async function pgInsertVotersPerContract(
     }, dbRows)
 }
 
-async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows:AvailableClaims[]) {
+async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating pg db")
     try {
         const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
@@ -364,12 +372,22 @@ async function prepareDB(client: sq3.CommonSQLClient) {
     await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
     await client.query(CREATE_TABLE_AVAILABLE_CLAIMS);
 
+    // -------------------------------------
     // UPGRADE DB TABLES VERSION if required
-    // if (version == 1) {
-    //     // upgrade to version 2
-    //     await client.query("ALTER TABLE voters add column data_xxxxxx DOUBLE PRECISION")
-    //     await client.query(`update app_db_version set version=2, date_updated='${ISOTruncDate()}' where app_code='${APP_CODE}'`);
-    //     version = 2
+    // -------------------------------------
+    if (version == 1) {
+        // upgrade to version 2
+        await client.query("ALTER TABLE voters add column vp_for_payment INTEGER")
+        version += 1
+        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+        console.log("DB tables UPDATED to version:", version)
+    }
+
+    // if (version == 2) {
+    //     // upgrade to version 3
+    //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
+    //     version += 1
+    //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
     //     console.log("DB tables UPDATED to version:", version)
     // }
 }
@@ -459,9 +477,9 @@ async function mainAsyncProcess() {
 
     let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
-    
-    if (argv.findIndex(i => i == "show-voters")) {
-        console.log(JSON.stringify(allVoters,undefined,4))
+
+    if (argv.findIndex(i => i == "show-voters") > 0) {
+        console.log(JSON.stringify(allVoters, undefined, 4))
         return
     }
 
