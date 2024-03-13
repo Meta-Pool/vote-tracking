@@ -18,6 +18,7 @@ import { migrateAud, migrateLpVp } from "./migration/migrate";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
+import { computeAsDate } from "./compute-as-date";
 
 
 type ByContractAndRoundInfoType = {
@@ -37,7 +38,7 @@ type MetaVoteMetricsType = {
     votesPerContractAndRound: ByContractAndRoundInfoType[];
 }
 
-export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
+export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
     Promise<{
         metrics: MetaVoteMetricsType,
         dbRows: VotersRow[],
@@ -49,6 +50,11 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
         }
     }> {
 
+    if (!dateString) {
+        // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
+        dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
+    }
+
     //---
     let totalLocked = BigInt(0)
     let totalUnlocking = BigInt(0)
@@ -58,8 +64,6 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
     let countLockedAndUnlocking = 0
-    // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
-    let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
 
     // NOTE: only users WITH LOCKING POSITIONS are registered here
@@ -103,7 +107,7 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
         let userTotalVpInLaunches = 0
         let userTotalVpInAmbassadors = 0
         let userTotalVpInOther = 0
-        if (voter.vote_positions && userTotalVotingPower > 0) {
+        if (voter.vote_positions || userTotalVotingPower > 0) {
             // flag to not count the voter twice
             // if they voted for more than one initiative
             let voterCounted: Record<string, boolean> = {}
@@ -169,7 +173,7 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6):
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
                 vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
-                vp_for_payment: vp_for_payment,
+                vp_for_payment: Math.trunc(vp_for_payment),
                 meta_locked: Math.trunc(toNumber(userTotalMpDaoLocked, decimals)), // keep old "meta" name for backward compat
                 meta_unlocking: Math.trunc(toNumber(userTotalMpDaoUnlocking, decimals)),
                 meta_unlocked: Math.trunc(toNumber(userTotalMpDaoUnlocked, decimals)),
@@ -315,7 +319,7 @@ async function pgInsertVotersPerContract(
     }, dbRows)
 }
 
-async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
+export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating pg db")
     try {
         const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
@@ -393,7 +397,7 @@ async function prepareDB(client: sq3.CommonSQLClient) {
 }
 
 
-async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
+export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating sqlite db")
     try {
         // Connect & create tables if not exist
@@ -420,13 +424,15 @@ async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContr
         );
         console.log("sq3 update/insert voters_per_day_contract_round", byContractRows.length, "rows")
 
-        await sq3.insertOnConflictUpdate(db, "available_claims", claimableRows,
-            {
-                onConflictArgument: "",
-                onConflictCondition: "where excluded.claimable_amount > available_claims.claimable_amount"
-            }
-        );
-        console.log("sq3 update/insert available_claims", claimableRows.length, "rows")
+        if (claimableRows.length > 0) {
+            await sq3.insertOnConflictUpdate(db, "available_claims", claimableRows,
+                {
+                    onConflictArgument: "",
+                    onConflictCondition: "where excluded.claimable_amount > available_claims.claimable_amount"
+                }
+            );
+            console.log("sq3 update/insert available_claims", claimableRows.length, "rows")
+        }
 
         console.log("sqlite db updated successfully")
 
@@ -482,6 +488,12 @@ async function mainAsyncProcess() {
         console.log(JSON.stringify(allVoters, undefined, 4))
         return
     }
+    const computeAsDateInx = argv.findIndex(i => i == "compute-as-date")
+    if (computeAsDateInx > 0) {
+        await computeAsDate(argv[computeAsDateInx + 1], allVoters)
+        return
+    }
+
 
     {
         const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
@@ -523,7 +535,7 @@ setGlobalDryRunMode(argv.includes("dry"));
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 if (useTestnet) console.log("USING TESTNET")
-export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "mpdao-vote.testnet"
+export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "v1.mpdao-vote.testnet"
 export const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
