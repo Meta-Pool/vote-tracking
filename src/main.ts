@@ -254,7 +254,7 @@ async function pgInsertVotersHighWaterMark(
 ) {
     await pgInsertOnConflict(client, "voters", {
         onConflictArgument: "(date,account_id)",
-        onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use"
+        onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
     }, dbRows)
 }
 
@@ -408,12 +408,12 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
         let db: SqLiteDatabase = await sq3.open(DB_FILE)
         let client = new sq3.SQLiteClient(db)
         await prepareDB(client)
-        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        // insert/update the rows for this day, ONLY IF vp_in_use/vp_for_payment is higher than the existing value
         // so we store the high-water mark for the voter/day
         await sq3.insertOnConflictUpdate(db, "voters", dbRows,
             {
                 onConflictArgument: "",
-                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use"
+                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
             }
         );
         console.log("sq3 update/insert voters", dbRows.length, "rows")
