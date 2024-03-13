@@ -19,6 +19,7 @@ import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
+import { homedir } from "os";
 
 
 type ByContractAndRoundInfoType = {
@@ -401,7 +402,8 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
     console.log("Updating sqlite db")
     try {
         // Connect & create tables if not exist
-        const DB_FILE = env.DB || "voters.db3"
+        let DB_FILE = env.DB || "voters.db3" // same as exec dir, for cron job
+        if (useTestnet) DB_FILE = join(homedir(), "voters.db3")
         console.log("SQLite db file", DB_FILE)
         let db: SqLiteDatabase = await sq3.open(DB_FILE)
         let client = new sq3.SQLiteClient(db)
