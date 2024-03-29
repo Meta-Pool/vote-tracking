@@ -4,3 +4,9 @@ hourly-metrics.json
 AllVoters.*.json
 voters.db3
 ca-certificate.crt
+
+.env
+.DS_Store
+
+certificate/*.crt
+

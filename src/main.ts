@@ -16,6 +16,15 @@ type MetaVoteDataType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerAddress: ByContractInfoType[];
+
+    totalLocking30d: number;
+    totalLocking60d: number;
+    totalLocking90d: number;
+    totalLocking120d: number;
+    totalLocking180d: number;
+    totalLocking240d: number;
+    totalLocking300d: number;
+
     totalUnlocking7dOrLess: number;
     totalUnlocking15dOrLess: number;
     totalUnlocking30dOrLess: number;
@@ -40,6 +49,15 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
 
     //const E24 = BigInt("1" + "0".repeat(24))
     //const E6 = BigInt("1" + "0".repeat(6))
+
+    let totalLocking30d = 0
+    let totalLocking60d = 0
+    let totalLocking90d = 0
+    let totalLocking120d = 0
+    let totalLocking180d = 0
+    let totalLocking240d = 0
+    let totalLocking300d = 0
+
     let totalUnlocking7dOrLess = 0
     let totalUnlocking15dOrLess = 0
     let totalUnlocking30dOrLess = 0
@@ -62,6 +80,21 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
             if (lp.is_locked) {
                 userTotalMetaLocked += metaAmount
                 userTotalVotingPower += yton(lp.voting_power)
+                if (lp.locking_period <= 30) {
+                    totalLocking30d += metaAmount
+                } else if (lp.locking_period <= 60) {
+                    totalLocking60d += metaAmount
+                } else if (lp.locking_period <= 90) {
+                    totalLocking90d += metaAmount
+                } else if (lp.locking_period <= 120) {
+                    totalLocking120d += metaAmount
+                } else if (lp.locking_period <= 180) {
+                    totalLocking180d += metaAmount
+                } else if (lp.locking_period <= 240) {
+                    totalLocking240d += metaAmount
+                } else {
+                    totalLocking300d += metaAmount
+                }
             }
             else if (lp.is_unlocked) {
                 totalUnlocked += metaAmount
@@ -132,6 +165,14 @@ async function processMetaVote(): Promise<MetaVoteDataType> {
         totalVotingPower: totalVotingPower,
         totalVotingPowerUsed: totalVotingPowerUsed,
         votesPerAddress: votesPerAddress,
+
+        totalLocking30d,
+        totalLocking60d,
+        totalLocking90d,
+        totalLocking120d,
+        totalLocking180d,
+        totalLocking240d,
+        totalLocking300d,
 
         totalUnlocking7dOrLess,
         totalUnlocking15dOrLess,
