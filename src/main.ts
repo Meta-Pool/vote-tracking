@@ -37,6 +37,15 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
+    
+    totalLocking30d: number;
+    totalLocking60d: number;
+    totalLocking90d: number;
+    totalLocking120d: number;
+    totalLocking180d: number;
+    totalLocking240d: number;
+    totalLocking300d: number;
+
     totalUnlocking7dOrLess: number;
     totalUnlocking15dOrLess: number;
     totalUnlocking30dOrLess: number;
@@ -75,6 +84,15 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
 
     //const E24 = BigInt("1" + "0".repeat(24))
     const E6 = BigInt("1" + "0".repeat(6))
+
+    let totalLocking30d = 0
+    let totalLocking60d = 0
+    let totalLocking90d = 0
+    let totalLocking120d = 0
+    let totalLocking180d = 0
+    let totalLocking240d = 0
+    let totalLocking300d = 0
+
     let totalUnlocking7dOrLess = 0
     let totalUnlocking15dOrLess = 0
     let totalUnlocking30dOrLess = 0
@@ -106,10 +124,26 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
         let userTotalMpDaoUnlocked = BigInt(0)
         let hasLockedOrUnlocking = false
         for (let lp of voter.locking_positions) {
+            const mpDaoAmountNum = Number(BigInt(lp.amount) / E6)
             if (lp.is_locked) {
                 userTotalMpDaoLocked += BigInt(lp.amount)
                 userTotalVotingPower += yton(lp.voting_power)
                 hasLockedOrUnlocking = true
+                if (lp.locking_period <= 30) {
+                    totalLocking30d += mpDaoAmountNum
+                } else if (lp.locking_period <= 60) {
+                    totalLocking60d += mpDaoAmountNum
+                } else if (lp.locking_period <= 90) {
+                    totalLocking90d += mpDaoAmountNum
+                } else if (lp.locking_period <= 120) {
+                    totalLocking120d += mpDaoAmountNum
+                } else if (lp.locking_period <= 180) {
+                    totalLocking180d += mpDaoAmountNum
+                } else if (lp.locking_period <= 240) {
+                    totalLocking240d += mpDaoAmountNum
+                } else {
+                    totalLocking300d += mpDaoAmountNum
+                }
             }
             else if (lp.is_unlocked) {
                 userTotalMpDaoUnlocked += BigInt(lp.amount)
@@ -117,28 +151,27 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
             else {
                 userTotalMpDaoUnlocking += BigInt(lp.amount)
                 hasLockedOrUnlocking = true
-                const mpDaoUnlockingAmount = Number(BigInt(lp.amount) / E6)
-                const unixMsTimeNow = new Date().getTime() 
+                const unixMsTimeNow = new Date().getTime()
                 const unlockingEndsAt = (lp.unlocking_started_at || 0) + lp.locking_period * 24 * 60 * 60 * 1000
                 const remainingDays = Math.trunc((unlockingEndsAt - unixMsTimeNow) / 1000 / 60 / 60 / 24)
                 if (remainingDays <= 7) {
-                    totalUnlocking7dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking7dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 15) {
-                    totalUnlocking15dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking15dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 30) {
-                    totalUnlocking30dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking30dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 60) {
-                    totalUnlocking60dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking60dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 90) {
-                    totalUnlocking90dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking90dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 120) {
-                    totalUnlocking120dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking120dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 180) {
-                    totalUnlocking180dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking180dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 240) {
-                    totalUnlocking240dOrLess += mpDaoUnlockingAmount
+                    totalUnlocking240dOrLess += mpDaoAmountNum
                 } else {
-                    totalUnlockingMores240d += mpDaoUnlockingAmount
+                    totalUnlockingMores240d += mpDaoAmountNum
                 }
             }
         }
@@ -260,6 +293,13 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
+            totalLocking30d,
+            totalLocking60d,
+            totalLocking90d,
+            totalLocking120d,
+            totalLocking180d,
+            totalLocking240d,
+            totalLocking300d,
             totalUnlocking7dOrLess,
             totalUnlocking15dOrLess,
             totalUnlocking30dOrLess,
@@ -269,7 +309,7 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
             totalUnlocking180dOrLess,
             totalUnlocking240dOrLess,
             totalUnlockingMores240d
-                },
+        },
         dbRows,
         dbRows2,
         extraMetrics: {

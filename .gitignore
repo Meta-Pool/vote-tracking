@@ -9,3 +9,4 @@ AllVoters.*.json
 .DS_Store
 
 certificate/*.crt
+mpdao-hourly-metrics.json
