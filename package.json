@@ -4,8 +4,10 @@
   "description": "meta pool secondary hourly metrics",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "test": "node dist/main.js test"
+    "build": "tsc -b --verbose",
+    "test": "npm run build && node dist/main.js test",
+    "dry": "npm run build && node dist/main.js dry",
+    "start": "npm run build && echo 'check scripts/every-hour.sh, include it in crontab'"
   },
   "author": "",
   "license": "ISC",
