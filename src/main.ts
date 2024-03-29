@@ -31,6 +31,15 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
+
+    totalLocking30d: number;
+    totalLocking60d: number;
+    totalLocking90d: number;
+    totalLocking120d: number;
+    totalLocking180d: number;
+    totalLocking240d: number;
+    totalLocking300d: number;
+
     totalUnlocking7dOrLess: number;
     totalUnlocking15dOrLess: number;
     totalUnlocking30dOrLess: number;
@@ -59,6 +68,15 @@ async function processMetaVote(allVoters: Voters[]):
 
     //const E24 = BigInt("1" + "0".repeat(24))
     //const E6 = BigInt("1" + "0".repeat(6))
+
+    let totalLocking30d = 0
+    let totalLocking60d = 0
+    let totalLocking90d = 0
+    let totalLocking120d = 0
+    let totalLocking180d = 0
+    let totalLocking240d = 0
+    let totalLocking300d = 0
+
     let totalUnlocking7dOrLess = 0
     let totalUnlocking15dOrLess = 0
     let totalUnlocking30dOrLess = 0
@@ -87,6 +105,21 @@ async function processMetaVote(allVoters: Voters[]):
             if (lp.is_locked) {
                 userTotalMetaLocked += metaAmount
                 userTotalVotingPower += yton(lp.voting_power)
+                if (lp.locking_period <= 30) {
+                    totalLocking30d += metaAmount
+                } else if (lp.locking_period <= 60) {
+                    totalLocking60d += metaAmount
+                } else if (lp.locking_period <= 90) {
+                    totalLocking90d += metaAmount
+                } else if (lp.locking_period <= 120) {
+                    totalLocking120d += metaAmount
+                } else if (lp.locking_period <= 180) {
+                    totalLocking180d += metaAmount
+                } else if (lp.locking_period <= 240) {
+                    totalLocking240d += metaAmount
+                } else {
+                    totalLocking300d += metaAmount
+                }
             }
             else if (lp.is_unlocked) {
                 userTotalMetaUnlocked += metaAmount
@@ -94,7 +127,7 @@ async function processMetaVote(allVoters: Voters[]):
             else {
                 userTotalMetaUnlocking += metaAmount
                 //hasLockedOrUnlocking = true
-                const unixMsTimeNow = new Date().getTime() 
+                const unixMsTimeNow = new Date().getTime()
                 const unlockingEndsAt = (lp.unlocking_started_at || 0) + lp.locking_period * 24 * 60 * 60 * 1000
                 const remainingDays = Math.trunc((unlockingEndsAt - unixMsTimeNow) / 1000 / 60 / 60 / 24)
                 if (remainingDays <= 7) {
@@ -228,6 +261,13 @@ async function processMetaVote(allVoters: Voters[]):
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
+            totalLocking30d,
+            totalLocking60d,
+            totalLocking90d,
+            totalLocking120d,
+            totalLocking180d,
+            totalLocking240d,
+            totalLocking300d,
             totalUnlocking7dOrLess,
             totalUnlocking15dOrLess,
             totalUnlocking30dOrLess,
@@ -237,7 +277,7 @@ async function processMetaVote(allVoters: Voters[]):
             totalUnlocking180dOrLess,
             totalUnlocking240dOrLess,
             totalUnlockingMores240d
-                },
+        },
         dbRows,
         dbRows2
     }
@@ -278,6 +318,22 @@ async function mainProcess() {
     if (!dryRun) await updateDbSqLite(dbRows, dbRows2)
     // update remote pgDB
     if (!dryRun) await updateDbPg(dbRows, dbRows2)
+
+    if (dryRun) {
+        // check sums
+        {
+            const totalLocked = metrics.totalLocked
+            const sumTrenches = metrics.totalLocking30d + metrics.totalLocking60d + metrics.totalLocking90d + metrics.totalLocking120d + metrics.totalLocking180d + metrics.totalLocking240d + metrics.totalLocking300d
+            console.log("totalLocked", totalLocked, "sumTrenches", sumTrenches)
+            if (totalLocked.toFixed(0) != sumTrenches.toFixed(0)) throw new Error("totalLocked!=sumTrenches")
+        }
+        {
+            const totalUnlocking = metrics.totalUnlocking
+            const sumTrenches = metrics.totalUnlocking7dOrLess + metrics.totalUnlocking15dOrLess + metrics.totalUnlocking30dOrLess + metrics.totalUnlocking60dOrLess + metrics.totalUnlocking90dOrLess + metrics.totalUnlocking120dOrLess + metrics.totalUnlocking180dOrLess + metrics.totalUnlocking240dOrLess + metrics.totalUnlockingMores240d
+            console.log("totalUnlocking", totalUnlocking, "sumTrenches", sumTrenches)
+            if (totalUnlocking.toFixed(0) != sumTrenches.toFixed(0)) throw new Error("totalUnlocking!=sumTrenches")
+        }
+    }
 }
 
 async function pgInsertVotersHighWaterMark(
