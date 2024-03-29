@@ -37,6 +37,15 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
+    totalUnlocking7dOrLess: number;
+    totalUnlocking15dOrLess: number;
+    totalUnlocking30dOrLess: number;
+    totalUnlocking60dOrLess: number;
+    totalUnlocking90dOrLess: number;
+    totalUnlocking120dOrLess: number;
+    totalUnlocking180dOrLess: number;
+    totalUnlocking240dOrLess: number;
+    totalUnlockingMores240d: number;
 }
 
 export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
@@ -64,6 +73,18 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
+    //const E24 = BigInt("1" + "0".repeat(24))
+    const E6 = BigInt("1" + "0".repeat(6))
+    let totalUnlocking7dOrLess = 0
+    let totalUnlocking15dOrLess = 0
+    let totalUnlocking30dOrLess = 0
+    let totalUnlocking60dOrLess = 0
+    let totalUnlocking90dOrLess = 0
+    let totalUnlocking120dOrLess = 0
+    let totalUnlocking180dOrLess = 0
+    let totalUnlocking240dOrLess = 0
+    let totalUnlockingMores240d = 0
+
     let countLockedAndUnlocking = 0
     let dbRows: VotersRow[] = []
 
@@ -71,6 +92,8 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
     // migration grace period (no need to vote to gey paid) until July 31st
     const isGracePeriod = isoTruncDate() < "2024-08"
     const extendGracePeriodForEthBased = true
+
+    console.log("processMetaVote, allVoters.length:", allVoters.length)
 
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
@@ -94,6 +117,29 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
             else {
                 userTotalMpDaoUnlocking += BigInt(lp.amount)
                 hasLockedOrUnlocking = true
+                const mpDaoUnlockingAmount = Number(BigInt(lp.amount) / E6)
+                const unixMsTimeNow = new Date().getTime() 
+                const unlockingEndsAt = (lp.unlocking_started_at || 0) + lp.locking_period * 24 * 60 * 60 * 1000
+                const remainingDays = Math.trunc((unlockingEndsAt - unixMsTimeNow) / 1000 / 60 / 60 / 24)
+                if (remainingDays <= 7) {
+                    totalUnlocking7dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 15) {
+                    totalUnlocking15dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 30) {
+                    totalUnlocking30dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 60) {
+                    totalUnlocking60dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 90) {
+                    totalUnlocking90dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 120) {
+                    totalUnlocking120dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 180) {
+                    totalUnlocking180dOrLess += mpDaoUnlockingAmount
+                } else if (remainingDays <= 240) {
+                    totalUnlocking240dOrLess += mpDaoUnlockingAmount
+                } else {
+                    totalUnlockingMores240d += mpDaoUnlockingAmount
+                }
             }
         }
         if (hasLockedOrUnlocking) countLockedAndUnlocking += 1;
@@ -214,14 +260,22 @@ export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, date
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
-        },
+            totalUnlocking7dOrLess,
+            totalUnlocking15dOrLess,
+            totalUnlocking30dOrLess,
+            totalUnlocking60dOrLess,
+            totalUnlocking90dOrLess,
+            totalUnlocking120dOrLess,
+            totalUnlocking180dOrLess,
+            totalUnlocking240dOrLess,
+            totalUnlockingMores240d
+                },
         dbRows,
         dbRows2,
         extraMetrics: {
             totalLockedB: totalLocked,
             totalUnlockingB: totalUnlocking,
             totalUnLockedB: totalUnlocked,
-
         }
     }
 
