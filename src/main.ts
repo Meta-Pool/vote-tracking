@@ -13,6 +13,7 @@ import { join } from "path";
 import { buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
+import { setGlobalDryRunMode } from "./contracts/base-smart-contract";
 
 
 type ByContractAndRoundInfoType = {
@@ -30,6 +31,15 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
+    totalUnlocking7dOrLess: number;
+    totalUnlocking15dOrLess: number;
+    totalUnlocking30dOrLess: number;
+    totalUnlocking60dOrLess: number;
+    totalUnlocking90dOrLess: number;
+    totalUnlocking120dOrLess: number;
+    totalUnlocking180dOrLess: number;
+    totalUnlocking240dOrLess: number;
+    totalUnlockingMores240d: number;
 }
 
 async function processMetaVote(allVoters: Voters[]):
@@ -47,9 +57,23 @@ async function processMetaVote(allVoters: Voters[]):
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
+    //const E24 = BigInt("1" + "0".repeat(24))
+    //const E6 = BigInt("1" + "0".repeat(6))
+    let totalUnlocking7dOrLess = 0
+    let totalUnlocking15dOrLess = 0
+    let totalUnlocking30dOrLess = 0
+    let totalUnlocking60dOrLess = 0
+    let totalUnlocking90dOrLess = 0
+    let totalUnlocking120dOrLess = 0
+    let totalUnlocking180dOrLess = 0
+    let totalUnlocking240dOrLess = 0
+    let totalUnlockingMores240d = 0
+
     // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
     let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
     let dbRows: VotersRow[] = []
+
+    console.log("processMetaVote, allVoters.length:", allVoters.length)
 
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
@@ -69,6 +93,29 @@ async function processMetaVote(allVoters: Voters[]):
             }
             else {
                 userTotalMetaUnlocking += metaAmount
+                //hasLockedOrUnlocking = true
+                const unixMsTimeNow = new Date().getTime() 
+                const unlockingEndsAt = (lp.unlocking_started_at || 0) + lp.locking_period * 24 * 60 * 60 * 1000
+                const remainingDays = Math.trunc((unlockingEndsAt - unixMsTimeNow) / 1000 / 60 / 60 / 24)
+                if (remainingDays <= 7) {
+                    totalUnlocking7dOrLess += metaAmount
+                } else if (remainingDays <= 15) {
+                    totalUnlocking15dOrLess += metaAmount
+                } else if (remainingDays <= 30) {
+                    totalUnlocking30dOrLess += metaAmount
+                } else if (remainingDays <= 60) {
+                    totalUnlocking60dOrLess += metaAmount
+                } else if (remainingDays <= 90) {
+                    totalUnlocking90dOrLess += metaAmount
+                } else if (remainingDays <= 120) {
+                    totalUnlocking120dOrLess += metaAmount
+                } else if (remainingDays <= 180) {
+                    totalUnlocking180dOrLess += metaAmount
+                } else if (remainingDays <= 240) {
+                    totalUnlocking240dOrLess += metaAmount
+                } else {
+                    totalUnlockingMores240d += metaAmount
+                }
             }
         }
 
@@ -181,7 +228,16 @@ async function processMetaVote(allVoters: Voters[]):
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
-        },
+            totalUnlocking7dOrLess,
+            totalUnlocking15dOrLess,
+            totalUnlocking30dOrLess,
+            totalUnlocking60dOrLess,
+            totalUnlocking90dOrLess,
+            totalUnlocking120dOrLess,
+            totalUnlocking180dOrLess,
+            totalUnlocking240dOrLess,
+            totalUnlockingMores240d
+                },
         dbRows,
         dbRows2
     }
@@ -219,9 +275,9 @@ async function mainProcess() {
         console.error(err)
     }
     // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    await updateDbSqLite(dbRows, dbRows2)
+    if (!dryRun) await updateDbSqLite(dbRows, dbRows2)
     // update remote pgDB
-    await updateDbPg(dbRows, dbRows2)
+    if (!dryRun) await updateDbPg(dbRows, dbRows2)
 }
 
 async function pgInsertVotersHighWaterMark(
@@ -402,6 +458,9 @@ async function analyzeSingleFile(filePath: string) {
 
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
+export const dryRun = argv.includes("dry")
+if (dryRun) setGlobalDryRunMode(true)
+
 if (useTestnet) console.log("USING TESTNET")
 export const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
