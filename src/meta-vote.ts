@@ -23,9 +23,10 @@ type Voters = {
             locking_period: number;
             voting_power: string;
             unlocking_started_at: number | null;
-            is_unlocked: boolean,
-            is_unlocking: boolean,
-            is_locked: boolean
+            // only one of the following flags can be true at a given time
+            is_locked: boolean, // locked and providing VP
+            is_unlocking: boolean, // unbond period started and counting
+            is_unlocked: boolean, // unbond period ended, ready to withdraw
         }>;
     voting_power: string,
     vote_positions: Array<
