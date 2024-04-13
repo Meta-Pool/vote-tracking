@@ -1,5 +1,5 @@
 import { VoterInfo } from "./contracts/mpdao-vote"
-import { processMetaVote, updateDbPg, updateDbSqLite } from "./main"
+import { processMpDaoVote, updateDbPg, updateDbSqLite } from "./main"
 
 // compute locking and avg voting TODAY but save as a specific date
 // to be used if there are dates missing because bot failure
@@ -14,7 +14,7 @@ export async function computeAsDate(argDateISO: string, allVoters: VoterInfo[]) 
     const dateString = dateAsDate.toISOString().slice(0, 10)
     console.log("---------- COMPUTE AS DATE", dateString)
 
-    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters, 6, dateString);
+    let { metrics, dbRows, dbRows2 } = await processMpDaoVote(allVoters, 6, dateString);
 
     // UPDATE but using the indicated data
     // update local SQLite DB - it contains max locked tokens and max voting power per user/day

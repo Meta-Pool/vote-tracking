@@ -1,6 +1,6 @@
 import { yton } from "near-api-lite";
 import { MpDaoVoteContract, VoterInfo, uniqueNewLp, uniqueOldLp } from "../contracts/mpdao-vote";
-import { META_POOL_DAO_ACCOUNT, MPDAO_VOTE_CONTRACT_ID, OLD_META_VOTE_CONTRACT_ID, processMetaVote, useMainnet } from "../main";
+import { META_POOL_DAO_ACCOUNT, MPDAO_VOTE_CONTRACT_ID, OLD_META_VOTE_CONTRACT_ID, processMpDaoVote, useMainnet } from "../main";
 import { addCommas, mpdao_as_number, toNumber } from "../util/convert";
 import { getCredentials } from "../util/near";
 import { Nep141 } from "../contracts/NEP-141";
@@ -108,7 +108,7 @@ export async function migrateLpVp() {
     console.log("countMigrated this run", countMigrated, "totalNewLockedMpdaoAmount", totalNewLockedMpdaoAmount.toString(), mpdao_as_number(totalNewLockedMpdaoAmount));
     console.log("------")
     console.log("Old data analytics")
-    let { metrics, dbRows, dbRows2, extraMetrics } = await processMetaVote(allOldVoters, 24);
+    let { metrics, dbRows, dbRows2, extraMetrics } = await processMpDaoVote(allOldVoters, 24);
     console.log(metrics)
     console.log(extraMetrics)
     console.log("old totalLockedAndUnlocking", metrics.totalLocked + metrics.totalUnlocking)
@@ -116,7 +116,7 @@ export async function migrateLpVp() {
     // re-read
     const allNewVotersAfter = await newMetaVote.getAllVoters();
     console.log("New data analytics")
-    let { metrics: metrics2, dbRows: d1, dbRows2: d2, extraMetrics: newExtraMetrics } = await processMetaVote(allNewVotersAfter, 6);
+    let { metrics: metrics2, dbRows: d1, dbRows2: d2, extraMetrics: newExtraMetrics } = await processMpDaoVote(allNewVotersAfter, 6);
     console.log(metrics2)
     console.log(newExtraMetrics)
 

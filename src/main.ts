@@ -57,7 +57,7 @@ type MetaVoteMetricsType = {
     totalUnlockingMores240d: number;
 }
 
-export async function processMetaVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
+export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
     Promise<{
         metrics: MetaVoteMetricsType,
         dbRows: VotersRow[],
@@ -539,7 +539,7 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
 
 async function analyzeSingleFile(filePath: string) {
     let allVoters = JSON.parse(readFileSync(filePath).toString())
-    let { metrics } = await processMetaVote(allVoters);
+    let { metrics } = await processMpDaoVote(allVoters);
     console.log(metrics)
 }
 
@@ -577,8 +577,8 @@ async function mainAsyncProcess() {
     //     return
     // }
 
-    let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
-    const allVoters = await metaVote.getAllVoters();
+    let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+    const allVoters = await mpDaoVote.getAllVoters();
 
     if (argv.findIndex(i => i == "show-voters") > 0) {
         console.log(JSON.stringify(allVoters, undefined, 4))
@@ -604,7 +604,7 @@ async function mainAsyncProcess() {
         }
     }
 
-    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
+    let { metrics, dbRows, dbRows2 } = await processMpDaoVote(allVoters);
     console.log(metrics)
 
     writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
@@ -617,7 +617,7 @@ async function mainAsyncProcess() {
         console.error(err)
     }
 
-    const availableClaimsRows = await metaVote.getAllStnearClaims()
+    const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
     // update local SQLite DB - it contains max locked tokens and max voting power per user/day
     await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
     // update remote pgDB
