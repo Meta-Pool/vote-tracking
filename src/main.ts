@@ -14,7 +14,7 @@ import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
-import { migrateAud, migrateLpVp } from "./migration/migrate";
+import { migrateAud, migrateLpVp } from "./migration/migration-checks";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";

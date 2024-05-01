@@ -1,8 +1,7 @@
-import { MpDaoVoteContract } from "../contracts/mpdao-vote";
-import { OLD_META_VOTE_CONTRACT_ID } from "../main";
+import { getContracts } from "./migration-checks"
 
 export async function showMigrated() {
-    const oldMetaVote = new MpDaoVoteContract(OLD_META_VOTE_CONTRACT_ID)
+    const { oldMetaVote, newMetaVote } = getContracts()
     const allMigrated = await oldMetaVote.getAllMigratedUsers()
     console.log(JSON.stringify(allMigrated,undefined,4))
 }
