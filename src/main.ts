@@ -14,7 +14,6 @@ import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
-import { migrateAud, migrateLpVp } from "./migration/migration-checks";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
@@ -566,16 +565,6 @@ async function mainAsyncProcess() {
         await showClaimsStNear()
         return
     }
-    const migrateAudInx = argv.findIndex(i => i == "migrate-aud")
-    if (migrateAudInx > 0) {
-        await migrateAud()
-        return
-    }
-    // const migrateLpVpInx = argv.findIndex(i => i == "migrate-lp-vp")
-    // if (migrateLpVpInx > 0) {
-    //     await migrateLpVp()
-    //     return
-    // }
 
     let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await mpDaoVote.getAllVoters();
