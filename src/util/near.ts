@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import { useMainnet } from '../main';
 
-export function getCredentials(accountId: string) {
+export function getCredentials(accountId: string): { account_id: string, private_key: string } {
     const network = useMainnet ? "mainnet" : "testnet"
 
     const homedir = os.homedir()

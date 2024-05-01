@@ -42,6 +42,21 @@ export async function run(db: sqlite3.Database, sql: string, params?: any): Prom
 }
 
 
+export type CommonSQLClient = {
+  query(sql: string): Promise<any>;
+  query(sql: string, params: any): Promise<any>;
+}
+
+// create a class "SQLiteClient" for compat with pg.Client
+export class SQLiteClient implements CommonSQLClient {
+  public constructor(public db: sqlite3.Database) { }
+
+  async query(sql: string, params: any = undefined) : Promise<any> {
+    return query(this.db, sql, params)
+  }
+
+}
+
 
 async function insertCommon(
   cmd: "insert" | "insert or replace",
@@ -64,7 +79,7 @@ async function insertCommon(
     else {
       row = originalRow
     }
-    const { statement, values } = buildInsert("sq3", cmd, table, row,onConflict)
+    const { statement, values } = buildInsert("sq3", cmd, table, row, onConflict)
     await run(db, statement, values)
   }
   return run(db, "commit", undefined)

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { MetaVoteContract, Voters } from "./contracts/meta-vote";
+import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
+import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3'
 import { Database as SqLiteDatabase } from "sqlite3";
@@ -10,10 +10,15 @@ import { Database as SqLiteDatabase } from "sqlite3";
 
 import { Client } from 'pg';
 import { join } from "path";
-import { buildInsert } from "./util/sqlBuilder";
+import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
 import { showVotesFor } from "./votesFor";
-import { setGlobalDryRunMode } from "./contracts/base-smart-contract";
+import { isoTruncDate, toNumber } from "./util/convert";
+import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
+import { showMigrated } from "./migration/show-migrated";
+import { showClaimsStNear } from "./claims/show-claims-stnear";
+import { computeAsDate } from "./compute-as-date";
+import { homedir } from "os";
 
 
 type ByContractAndRoundInfoType = {
@@ -21,7 +26,7 @@ type ByContractAndRoundInfoType = {
     round: number,
     countVoters: number,
     totalVotes: number;
-    proportionalMeta: number;
+    proportionalMpDao: number;
 }
 type MetaVoteMetricsType = {
     metaVoteUserCount: number;
@@ -31,7 +36,7 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
-
+    
     totalLocking30d: number;
     totalLocking60d: number;
     totalLocking90d: number;
@@ -51,23 +56,33 @@ type MetaVoteMetricsType = {
     totalUnlockingMores240d: number;
 }
 
-async function processMetaVote(allVoters: Voters[]):
+export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
     Promise<{
         metrics: MetaVoteMetricsType,
         dbRows: VotersRow[],
-        dbRows2: VotersByContractAndRound[]
+        dbRows2: VotersByContractAndRound[],
+        extraMetrics: {
+            totalLockedB: bigint;
+            totalUnlockingB: bigint;
+            totalUnLockedB: bigint,
+        }
     }> {
 
+    if (!dateString) {
+        // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
+        dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
+    }
+
     //---
-    let totalLocked = 0
-    let totalUnlocking = 0
-    let totalUnlocked = 0
+    let totalLocked = BigInt(0)
+    let totalUnlocking = BigInt(0)
+    let totalUnlocked = BigInt(0)
     let totalVotingPower = 0
     let totalVotingPowerUsed = 0
     let votesPerContractAndRound: ByContractAndRoundInfoType[] = []
 
     //const E24 = BigInt("1" + "0".repeat(24))
-    //const E6 = BigInt("1" + "0".repeat(6))
+    const E6 = BigInt("1" + "0".repeat(6))
 
     let totalLocking30d = 0
     let totalLocking60d = 0
@@ -87,82 +102,91 @@ async function processMetaVote(allVoters: Voters[]):
     let totalUnlocking240dOrLess = 0
     let totalUnlockingMores240d = 0
 
-    // subtract 30 seconds, so the cron running 2023-03-30 00:04 registers "end of day data" for 2023-03-29
-    let dateString = (new Date(Date.now() - 30000).toISOString()).slice(0, 10)
+    let countLockedAndUnlocking = 0
     let dbRows: VotersRow[] = []
+
+    // NOTE: only users WITH LOCKING POSITIONS are registered here
+    // migration grace period (no need to vote to gey paid) until July 31st
+    const isGracePeriod = isoTruncDate() < "2024-08"
+    const extendGracePeriodForEthBased = true
 
     console.log("processMetaVote, allVoters.length:", allVoters.length)
 
     for (let voter of allVoters) {
         if (!voter.locking_positions) continue;
+        const voterIsEthMirror = voter.voter_id.endsWith(".evmp.near") || voter.voter_id.endsWith(".evmp.testnet")
 
+        if (isDryRun()) console.log("--", voter.voter_id);
         let userTotalVotingPower = 0
-        let userTotalMetaLocked = 0
-        let userTotalMetaUnlocking = 0
-        let userTotalMetaUnlocked = 0
+        let userTotalMpDaoLocked = BigInt(0)
+        let userTotalMpDaoUnlocking = BigInt(0)
+        let userTotalMpDaoUnlocked = BigInt(0)
+        let hasLockedOrUnlocking = false
         for (let lp of voter.locking_positions) {
-            const metaAmount = yton(lp.amount)
+            const mpDaoAmountNum = Number(BigInt(lp.amount) / E6)
             if (lp.is_locked) {
-                userTotalMetaLocked += metaAmount
+                userTotalMpDaoLocked += BigInt(lp.amount)
                 userTotalVotingPower += yton(lp.voting_power)
+                hasLockedOrUnlocking = true
                 if (lp.locking_period <= 30) {
-                    totalLocking30d += metaAmount
+                    totalLocking30d += mpDaoAmountNum
                 } else if (lp.locking_period <= 60) {
-                    totalLocking60d += metaAmount
+                    totalLocking60d += mpDaoAmountNum
                 } else if (lp.locking_period <= 90) {
-                    totalLocking90d += metaAmount
+                    totalLocking90d += mpDaoAmountNum
                 } else if (lp.locking_period <= 120) {
-                    totalLocking120d += metaAmount
+                    totalLocking120d += mpDaoAmountNum
                 } else if (lp.locking_period <= 180) {
-                    totalLocking180d += metaAmount
+                    totalLocking180d += mpDaoAmountNum
                 } else if (lp.locking_period <= 240) {
-                    totalLocking240d += metaAmount
+                    totalLocking240d += mpDaoAmountNum
                 } else {
-                    totalLocking300d += metaAmount
+                    totalLocking300d += mpDaoAmountNum
                 }
             }
             else if (lp.is_unlocked) {
-                userTotalMetaUnlocked += metaAmount
+                userTotalMpDaoUnlocked += BigInt(lp.amount)
             }
             else {
-                userTotalMetaUnlocking += metaAmount
-                //hasLockedOrUnlocking = true
+                userTotalMpDaoUnlocking += BigInt(lp.amount)
+                hasLockedOrUnlocking = true
                 const unixMsTimeNow = new Date().getTime()
                 const unlockingEndsAt = (lp.unlocking_started_at || 0) + lp.locking_period * 24 * 60 * 60 * 1000
                 const remainingDays = Math.trunc((unlockingEndsAt - unixMsTimeNow) / 1000 / 60 / 60 / 24)
                 if (remainingDays <= 7) {
-                    totalUnlocking7dOrLess += metaAmount
+                    totalUnlocking7dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 15) {
-                    totalUnlocking15dOrLess += metaAmount
+                    totalUnlocking15dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 30) {
-                    totalUnlocking30dOrLess += metaAmount
+                    totalUnlocking30dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 60) {
-                    totalUnlocking60dOrLess += metaAmount
+                    totalUnlocking60dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 90) {
-                    totalUnlocking90dOrLess += metaAmount
+                    totalUnlocking90dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 120) {
-                    totalUnlocking120dOrLess += metaAmount
+                    totalUnlocking120dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 180) {
-                    totalUnlocking180dOrLess += metaAmount
+                    totalUnlocking180dOrLess += mpDaoAmountNum
                 } else if (remainingDays <= 240) {
-                    totalUnlocking240dOrLess += metaAmount
+                    totalUnlocking240dOrLess += mpDaoAmountNum
                 } else {
-                    totalUnlockingMores240d += metaAmount
+                    totalUnlockingMores240d += mpDaoAmountNum
                 }
             }
         }
+        if (hasLockedOrUnlocking) countLockedAndUnlocking += 1;
 
         totalVotingPower += userTotalVotingPower
-        totalLocked += userTotalMetaLocked
-        totalUnlocking += userTotalMetaUnlocking
-        totalUnlocked += userTotalMetaUnlocked;
+        totalLocked += userTotalMpDaoLocked
+        totalUnlocking += userTotalMpDaoUnlocking
+        totalUnlocked += userTotalMpDaoUnlocked;
 
         let userTotalVpInUse = 0
         let userTotalVpInValidators = 0
         let userTotalVpInLaunches = 0
         let userTotalVpInAmbassadors = 0
         let userTotalVpInOther = 0
-        if (voter.vote_positions && userTotalVotingPower > 0) {
+        if (voter.vote_positions || userTotalVotingPower > 0) {
             // flag to not count the voter twice
             // if they voted for more than one initiative
             let voterCounted: Record<string, boolean> = {}
@@ -172,7 +196,7 @@ async function processMetaVote(allVoters: Voters[]):
                 if (positionVotingPower == 0) continue;
 
                 // compute proportional meta locked for this vote
-                const proportionalMeta = userTotalMetaLocked * (positionVotingPower / userTotalVotingPower);
+                const proportionalMpDao = toNumber(userTotalMpDaoLocked, decimals) * (positionVotingPower / userTotalVotingPower);
                 userTotalVpInUse += positionVotingPower
                 totalVotingPowerUsed += positionVotingPower
 
@@ -206,7 +230,7 @@ async function processMetaVote(allVoters: Voters[]):
                         round,
                         countVoters: 1,
                         totalVotes: positionVotingPower,
-                        proportionalMeta: proportionalMeta
+                        proportionalMpDao: proportionalMpDao
                     })
                     voterCounted[countVoterId] = true
                 }
@@ -216,22 +240,25 @@ async function processMetaVote(allVoters: Voters[]):
                         voterCounted[countVoterId] = true
                     }
                     prev.totalVotes += positionVotingPower
-                    prev.proportionalMeta += proportionalMeta
+                    prev.proportionalMpDao += proportionalMpDao
                 }
             }
 
+            const vp_for_payment = (isGracePeriod || (voterIsEthMirror && extendGracePeriodForEthBased)) ?
+                userTotalVotingPower
+                : userTotalVpInUse;
             dbRows.push({
                 date: dateString,
                 account_id: voter.voter_id,
                 vp_in_use: Math.trunc(userTotalVpInUse),
                 vp_idle: Math.trunc(userTotalVotingPower - userTotalVpInUse),
-                meta_locked: Math.trunc(userTotalMetaLocked),
-                meta_unlocking: Math.trunc(userTotalMetaUnlocking),
-                meta_unlocked: Math.trunc(userTotalMetaUnlocked),
+                vp_for_payment: Math.trunc(vp_for_payment),
+                meta_locked: Math.trunc(toNumber(userTotalMpDaoLocked, decimals)), // keep old "meta" name for backward compat
+                meta_unlocking: Math.trunc(toNumber(userTotalMpDaoUnlocking, decimals)),
+                meta_unlocked: Math.trunc(toNumber(userTotalMpDaoUnlocked, decimals)),
                 vp_in_validators: Math.trunc(userTotalVpInValidators),
                 vp_in_launches: Math.trunc(userTotalVpInLaunches),
                 vp_in_ambassadors: Math.trunc(userTotalVpInAmbassadors),
-                //vp_in_others: Math.trunc(userTotalVpInOther),
             })
 
         }
@@ -248,16 +275,20 @@ async function processMetaVote(allVoters: Voters[]):
                 round: item.round,
                 countVoters: item.countVoters,
                 totalVotes: Math.round(item.totalVotes),
-                proportionalMeta: Math.round(item.proportionalMeta)
+                proportionalMeta: Math.round(item.proportionalMpDao)
             })
+    }
+
+    if (isDryRun()) {
+        console.log("countLockedAndUnlocking", countLockedAndUnlocking)
     }
 
     return {
         metrics: {
             metaVoteUserCount: allVoters.length,
-            totalLocked: totalLocked,
-            totalUnlocking: totalUnlocking,
-            totalUnLocked: totalUnlocked,
+            totalLocked: toNumber(totalLocked, decimals),
+            totalUnlocking: toNumber(totalUnlocking, decimals),
+            totalUnLocked: toNumber(totalUnlocked, decimals),
             totalVotingPower: totalVotingPower,
             totalVotingPowerUsed: totalVotingPowerUsed,
             votesPerContractAndRound: votesPerContractAndRound,
@@ -279,84 +310,45 @@ async function processMetaVote(allVoters: Voters[]):
             totalUnlockingMores240d
         },
         dbRows,
-        dbRows2
+        dbRows2,
+        extraMetrics: {
+            totalLockedB: totalLocked,
+            totalUnlockingB: totalUnlocking,
+            totalUnLockedB: totalUnlocked,
+        }
     }
 
 }
 
-async function mainProcess() {
-
-    let metaVote = new MetaVoteContract(META_VOTE_CONTRACT_ID)
-    const allVoters = await metaVote.getAllVoters();
-
-    {
-        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
-        const monthDir = dateIsoFile.slice(0, 7)
-        if (!existsSync(monthDir)) {
-            mkdirSync(monthDir)
-        }
+async function pgInsertOnConflict(client: Client, table: string, onConflict: OnConflictArgs, dbRows: Record<string, any>[]) {
+    await client.query("BEGIN TRANSACTION");
+    let errorReported = false
+    for (const row of dbRows) {
+        const { statement, values } = buildInsert("pg",
+            "insert", table, row, onConflict)
         try {
-            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
-        } catch (ex) {
-            console.error(ex)
+            await client.query(statement, values);
+        } catch (err) {
+            console.error(`inserting on ${table}`)
+            console.error('An error occurred', err);
+            console.error(statement)
+            console.error(values)
+            errorReported = true;
+            break;
         }
     }
-
-    let { metrics, dbRows, dbRows2 } = await processMetaVote(allVoters);
-    console.log(metrics)
-
-    writeFileSync("hourly-metrics.json", JSON.stringify({
-        metaVote: metrics
-    }));
-
-    try {
-        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
-    } catch (err) {
-        console.error(err)
-    }
-    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    if (!dryRun) await updateDbSqLite(dbRows, dbRows2)
-    // update remote pgDB
-    if (!dryRun) await updateDbPg(dbRows, dbRows2)
-
-    if (dryRun) {
-        // check sums
-        {
-            const totalLocked = metrics.totalLocked
-            const sumTrenches = metrics.totalLocking30d + metrics.totalLocking60d + metrics.totalLocking90d + metrics.totalLocking120d + metrics.totalLocking180d + metrics.totalLocking240d + metrics.totalLocking300d
-            console.log("totalLocked", totalLocked, "sumTrenches", sumTrenches)
-            if (totalLocked.toFixed(0) != sumTrenches.toFixed(0)) throw new Error("totalLocked!=sumTrenches")
-        }
-        {
-            const totalUnlocking = metrics.totalUnlocking
-            const sumTrenches = metrics.totalUnlocking7dOrLess + metrics.totalUnlocking15dOrLess + metrics.totalUnlocking30dOrLess + metrics.totalUnlocking60dOrLess + metrics.totalUnlocking90dOrLess + metrics.totalUnlocking120dOrLess + metrics.totalUnlocking180dOrLess + metrics.totalUnlocking240dOrLess + metrics.totalUnlockingMores240d
-            console.log("totalUnlocking", totalUnlocking, "sumTrenches", sumTrenches)
-            if (totalUnlocking.toFixed(0) != sumTrenches.toFixed(0)) throw new Error("totalUnlocking!=sumTrenches")
-        }
-    }
+    await client.query(errorReported ? "ROLLBACK" : "COMMIT");
 }
+
 
 async function pgInsertVotersHighWaterMark(
     client: Client,
     dbRows: VotersRow[]
 ) {
-    for (const row of dbRows) {
-        const { statement, values } = buildInsert("pg",
-            "insert", "voters",
-            row,
-            {
-                onConflictArgument: "(date,account_id)",
-                onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use"
-            })
-        try {
-            await client.query(statement, values);
-        } catch (err) {
-            console.error('An error occurred', err);
-            console.error(statement)
-            console.error(values)
-            break;
-        }
-    }
+    await pgInsertOnConflict(client, "voters", {
+        onConflictArgument: "(date,account_id)",
+        onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
+    }, dbRows)
 }
 
 // async function pgInsertVotersHighWaterMark(
@@ -415,26 +407,13 @@ async function pgInsertVotersPerContract(
     client: Client,
     dbRows: VotersByContractAndRound[]
 ) {
-    for (const row of dbRows) {
-        const { statement, values } = buildInsert("pg",
-            "insert", "voters_per_day_contract_round",
-            row,
-            {
-                onConflictArgument: "(date,contract,round)",
-                onConflictCondition: ""
-            })
-        try {
-            await client.query(statement, values);
-        } catch (err) {
-            console.error('An error occurred', err);
-            console.error(statement)
-            console.error(values)
-            break;
-        }
-    }
+    await pgInsertOnConflict(client, "voters_per_day_contract_round", {
+        onConflictArgument: "(date,contract,round)",
+        onConflictCondition: ""
+    }, dbRows)
 }
 
-async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
+export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating pg db")
     try {
         const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
@@ -452,19 +431,20 @@ async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractA
         console.log("db:", client.database)
         // Connect & create tables if not exist
         await client.connect();
-        await client.query(CREATE_TABLE_VOTERS)
-        await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND)
+        await prepareDB(client)
         // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
         // so we store the high-water mark for the voter/day
-        await client.query("BEGIN TRANSACTION");
         await pgInsertVotersHighWaterMark(client, dbRows);
-        await client.query("COMMIT");
         console.log(client.database, "pg update/insert voters", dbRows.length, "rows")
 
-        await client.query("BEGIN TRANSACTION");
         await pgInsertVotersPerContract(client, byContractRows);
-        await client.query("COMMIT");
         console.log(client.database, "pg update/insert voters_per_day_contract_round", byContractRows.length, "rows")
+
+        await pgInsertOnConflict(client, "available_claims", {
+            onConflictArgument: "(date, account_id, token_code)",
+            onConflictCondition: "WHERE excluded.claimable_amount > available_claims.claimable_amount"
+        }, claimableRows)
+        console.log(client.database, "pg update/insert available_claims", claimableRows.length, "rows")
 
         await client.end();
 
@@ -474,23 +454,62 @@ async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractA
     }
 }
 
-async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[]) {
+async function prepareDB(client: sq3.CommonSQLClient) {
+
+    await client.query(CREATE_TABLE_APP_DEB_VERSION);
+    const result = await client.query(`select max(version) version from app_db_version where app_code='${APP_CODE}'`);
+    let version = result.rows[0].version;
+    if (version == null) { // no rows
+        await client.query(`insert into app_db_version(app_code,version,date_updated) values ('${APP_CODE}',1,'${isoTruncDate()}')`);
+        version = 1
+    }
+    console.log("DB version:", version)
+
+    // create tables if not exists
+    await client.query(CREATE_TABLE_VOTERS);
+    await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
+    await client.query(CREATE_TABLE_AVAILABLE_CLAIMS);
+
+    // -------------------------------------
+    // UPGRADE DB TABLES VERSION if required
+    // -------------------------------------
+    if (version == 1) {
+        // upgrade to version 2
+        await client.query("ALTER TABLE voters add column vp_for_payment INTEGER")
+        version += 1
+        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+        console.log("DB tables UPDATED to version:", version)
+    }
+
+    // if (version == 2) {
+    //     // upgrade to version 3
+    //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
+    //     version += 1
+    //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+    //     console.log("DB tables UPDATED to version:", version)
+    // }
+}
+
+
+export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating sqlite db")
     try {
         // Connect & create tables if not exist
-        const DB_FILE = env.DB || "voters.db3"
+        let DB_FILE = env.DB || "voters.db3" // same as exec dir, for cron job
+        if (useTestnet) DB_FILE = join(homedir(), "voters.db3")
+        console.log("SQLite db file", DB_FILE)
         let db: SqLiteDatabase = await sq3.open(DB_FILE)
-        await sq3.run(db, CREATE_TABLE_VOTERS);
-        await sq3.run(db, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
-        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        let client = new sq3.SQLiteClient(db)
+        await prepareDB(client)
+        // insert/update the rows for this day, ONLY IF vp_in_use/vp_for_payment is higher than the existing value
         // so we store the high-water mark for the voter/day
         await sq3.insertOnConflictUpdate(db, "voters", dbRows,
             {
                 onConflictArgument: "",
-                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use"
+                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
             }
         );
-        console.log("sq3 update/insert", dbRows.length, "rows")
+        console.log("sq3 update/insert voters", dbRows.length, "rows")
 
         await sq3.insertOnConflictUpdate(db, "voters_per_day_contract_round", byContractRows,
             {
@@ -499,6 +518,17 @@ async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContr
             }
         );
         console.log("sq3 update/insert voters_per_day_contract_round", byContractRows.length, "rows")
+
+        if (claimableRows.length > 0) {
+            await sq3.insertOnConflictUpdate(db, "available_claims", claimableRows,
+                {
+                    onConflictArgument: "",
+                    onConflictCondition: "where excluded.claimable_amount > available_claims.claimable_amount"
+                }
+            );
+            console.log("sq3 update/insert available_claims", claimableRows.length, "rows")
+        }
+
         console.log("sqlite db updated successfully")
 
     } catch (err) {
@@ -508,32 +538,96 @@ async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContr
 
 async function analyzeSingleFile(filePath: string) {
     let allVoters = JSON.parse(readFileSync(filePath).toString())
-    let { metrics } = await processMetaVote(allVoters);
+    let { metrics } = await processMpDaoVote(allVoters);
     console.log(metrics)
 }
 
+async function mainAsyncProcess() {
+
+    const fileArgvIndex = argv.findIndex(i => i == "file")
+    if (fileArgvIndex > 0) {
+        // process single file: node dist/main.js file xxxx.json
+        await analyzeSingleFile(argv[fileArgvIndex + 1])
+        return
+    }
+    const voteForInx = argv.findIndex(i => i == "votes-for")
+    if (voteForInx > 0) {
+        await showVotesFor(argv[voteForInx + 1])
+        return
+    }
+    const showMigratedInx = argv.findIndex(i => i == "show-migrated")
+    if (showMigratedInx > 0) {
+        await showMigrated()
+        return
+    }
+    const showClaimInx = argv.findIndex(i => i == "show-claims-stnear")
+    if (showClaimInx > 0) {
+        await showClaimsStNear()
+        return
+    }
+
+    let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+    const allVoters = await mpDaoVote.getAllVoters();
+
+    if (argv.findIndex(i => i == "show-voters") > 0) {
+        console.log(JSON.stringify(allVoters, undefined, 4))
+        return
+    }
+    const computeAsDateInx = argv.findIndex(i => i == "compute-as-date")
+    if (computeAsDateInx > 0) {
+        await computeAsDate(argv[computeAsDateInx + 1], allVoters)
+        return
+    }
+
+
+    {
+        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
+        const monthDir = dateIsoFile.slice(0, 7)
+        if (!existsSync(monthDir)) {
+            mkdirSync(monthDir)
+        }
+        try {
+            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
+        } catch (ex) {
+            console.error(ex)
+        }
+    }
+
+    let { metrics, dbRows, dbRows2 } = await processMpDaoVote(allVoters);
+    console.log(metrics)
+
+    writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
+        metaVote: metrics
+    }));
+
+    try {
+        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
+    } catch (err) {
+        console.error(err)
+    }
+
+    const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
+    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
+    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
+    // update remote pgDB
+    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+}
+
+// -----------------------------------------------------
+// -----------------------------------------------------
+console.log(argv)
+setGlobalDryRunMode(argv.includes("dry"));
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
 export const dryRun = argv.includes("dry")
 if (dryRun) setGlobalDryRunMode(true)
 
 if (useTestnet) console.log("USING TESTNET")
-export const META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
+export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "v1.mpdao-vote.testnet"
+export const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavote.testnet"
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
-export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "meta-vote.testnet"
+export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
+export const META_POOL_DAO_ACCOUNT = useMainnet ? "meta-pool-dao.near" : "meta-pool-dao.testnet"
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
-// process single file: node dist/main.js file xxxx.json
-const fileArgvIndex = argv.findIndex(i => i == "file")
-if (fileArgvIndex > 0) {
-    analyzeSingleFile(argv[fileArgvIndex + 1])
-}
-else {
-    const voteForInx = argv.findIndex(i => i == "votes-for")
-    if (voteForInx > 0) {
-        showVotesFor(argv[voteForInx + 1])
-    }
-    else {
-        mainProcess()
-    }
-}
+mainAsyncProcess()

@@ -1,6 +1,7 @@
 dist
 node_modules
 hourly-metrics.json
+mpdao-hourly-metrics.json
 voters.db3
 AllVoters.*.json
 
