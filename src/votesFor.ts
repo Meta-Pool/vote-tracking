@@ -3,7 +3,7 @@ import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote"
 import { MPDAO_VOTE_CONTRACT_ID } from "./main";
 import { mpdao_as_number } from "./util/convert";
 
-export async function showVotesFor(votableId:string) {
+export async function consoleShowVotesFor(votableId:string) {
     let metaVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await metaVote.getAllVoters();
     filterVotesFor(allVoters,votableId)

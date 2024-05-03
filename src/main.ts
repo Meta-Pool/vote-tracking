@@ -12,7 +12,7 @@ import { Client } from 'pg';
 import { join } from "path";
 import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
-import { showVotesFor } from "./votesFor";
+import { consoleShowVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
 import { showMigrated } from "./migration/show-migrated";
@@ -552,7 +552,7 @@ async function mainAsyncProcess() {
     }
     const voteForInx = argv.findIndex(i => i == "votes-for")
     if (voteForInx > 0) {
-        await showVotesFor(argv[voteForInx + 1])
+        await consoleShowVotesFor(argv[voteForInx + 1])
         return
     }
     const showMigratedInx = argv.findIndex(i => i == "show-migrated")
@@ -579,7 +579,8 @@ async function mainAsyncProcess() {
         return
     }
 
-
+    // backup all voters snapshot (one per hour)
+    // TODO: remove old backups
     {
         const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
         const monthDir = dateIsoFile.slice(0, 7)
@@ -588,6 +589,7 @@ async function mainAsyncProcess() {
         }
         try {
             writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
+            writeFileSync(`last-snapshot-AllVoters.json`, JSON.stringify(allVoters));
         } catch (ex) {
             console.error(ex)
         }
