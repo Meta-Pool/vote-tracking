@@ -213,7 +213,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
                             round = n;
                             break;
                         }
-                        if (vp.votable_object_id.includes(`Grants #${n} `) || vp.votable_object_id.includes(`Grants #${n}`)) {
+                        if (vp.votable_object_id.includes(`Grants #${n} `) || vp.votable_object_id.includes(`Grants #${n}-`)) {
                             round = n;
                             break;
                         }
