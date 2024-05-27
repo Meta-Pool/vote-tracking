@@ -22,15 +22,15 @@ const liquidStakingAccounts = [
     "linear-protocol.near",
 ]
 
-export async function generateDelegatorTableDataFromTimestampToNow(startUnixTimestamp: number = 0): Promise<ENO[]> {
+export async function generateDelegatorTableDataFromTimestampToNow(startUnixTimestamp: number = 1696129200 /*2023/10/01*/): Promise<ENO[]> {
     const output = [] as ENO[]
-    const delegatorsByEpoch = await getDelegatorsByEpoch()
-    const delegatorsByEpochFiltered = delegatorsByEpoch.filter((epochData: DelegatorsByEpochResponse) => {
-        // 1716810036
+    const delegatorsByEpochResponse = await getDelegatorsByEpoch()
+    const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
         return Number(BigInt(epochData.timestamp) / BigInt(1e9)) > startUnixTimestamp
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
+        console.log(delegatorsByEpoch.timestamp)
         for(const contractId of contracts) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             let liquidStakingAmount = 0

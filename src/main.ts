@@ -595,7 +595,7 @@ async function getENOsDataAndInsertIt() {
     }
     const enosFullPath = join(enosDir, enosFileName)
 
-    let startUnixTimestamp = 0
+    let startUnixTimestamp = 1696129200 /*2023/10/01*/
     if(existsSync(enosFullPath)) {
         startUnixTimestamp = JSON.parse(readFileSync(enosFullPath).toString()).lastRecordedTimestamp
     }
@@ -641,6 +641,12 @@ async function mainAsyncProcess() {
         await showClaimsStNear()
         return
     }
+    const isTest = argv.findIndex(i => i == "test")
+    if (isTest > 0) {
+        await getENOsDataAndInsertIt()
+        return
+    }
+
 
     let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await mpDaoVote.getAllVoters();
