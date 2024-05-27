@@ -94,5 +94,5 @@ CREATE TABLE IF NOT EXISTS eno (
   pool_id TEXT,
   non_liquid_stake DOUBLE PRECISION,
   liquid_stake DOUBLE PRECISION,
-  PRIMARY KEY (timestamp, epoch_id, pool_id)
+  PRIMARY KEY (unix_timestamp, epoch_id, pool_id)
 )`;
