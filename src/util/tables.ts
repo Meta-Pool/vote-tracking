@@ -78,3 +78,21 @@ CREATE TABLE IF NOT EXISTS available_claims (
     claimable_amount DOUBLE PRECISION,
     PRIMARY KEY (date, account_id, token_code)
 )`;
+
+export interface ENO {
+  unix_timestamp: number
+  epochId: string
+  poolId: string
+  nonLiquidStake: number
+  liquidStake: number
+}
+
+export const CREATE_TABLE_ENO = `
+CREATE TABLE IF NOT EXISTS eno (
+  unix_timestamp INTEGER,
+  epoch_id TEXT,
+  pool_id TEXT,
+  non_liquid_stake DOUBLE PRECISION,
+  liquid_stake DOUBLE PRECISION,
+  PRIMARY KEY (timestamp, epoch_id, pool_id)
+)`;

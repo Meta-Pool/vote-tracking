@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
+import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3'
 import { Database as SqLiteDatabase } from "sqlite3";
@@ -19,6 +19,7 @@ import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
+import { generateDelegatorTableDataFromTimestampToNow } from "./ENOs/delegators";
 
 
 type ByContractAndRoundInfoType = {
@@ -320,7 +321,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
 
 }
 
-async function pgInsertOnConflict(client: Client, table: string, onConflict: OnConflictArgs, dbRows: Record<string, any>[]) {
+async function pgInsertOnConflict(client: Client, table: string, dbRows: Record<string, any>[], onConflict?: OnConflictArgs) {
     await client.query("BEGIN TRANSACTION");
     let errorReported = false
     for (const row of dbRows) {
@@ -345,10 +346,17 @@ async function pgInsertVotersHighWaterMark(
     client: Client,
     dbRows: VotersRow[]
 ) {
-    await pgInsertOnConflict(client, "voters", {
+    await pgInsertOnConflict(client, "voters", dbRows, {
         onConflictArgument: "(date,account_id)",
         onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
-    }, dbRows)
+    })
+}
+
+async function pgInsertENOsData(
+    client: Client,
+    dbRows: ENO[]
+) {
+    await pgInsertOnConflict(client, "eno", dbRows)
 }
 
 // async function pgInsertVotersHighWaterMark(
@@ -407,10 +415,46 @@ async function pgInsertVotersPerContract(
     client: Client,
     dbRows: VotersByContractAndRound[]
 ) {
-    await pgInsertOnConflict(client, "voters_per_day_contract_round", {
+    await pgInsertOnConflict(client, "voters_per_day_contract_round", dbRows, {
         onConflictArgument: "(date,contract,round)",
         onConflictCondition: ""
-    }, dbRows)
+    })
+}
+
+async function insertENOsData(dbRows: ENO[]) {
+    console.log("Inserting ENOs pg db")
+    const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
+    const client = new Client({
+        host: config.host,
+        user: config.userName,
+        password: config.password,
+        database: useTestnet ? "near_testnet" : "near_mainnet",
+        port: config.port,
+        ssl: {
+            rejectUnauthorized: false,
+            ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
+        },
+    });
+    try {
+        console.log("db:", client.database)
+        // Connect & create tables if not exist
+        await client.connect();
+        await prepareDB(client)
+        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        // so we store the high-water mark for the voter/day
+        await pgInsertENOsData(client, dbRows);
+        console.log(client.database, "pg insert ENOs", dbRows.length, "rows")
+
+        console.log("ENOs pg db inserted successfully")
+        return true
+    } catch (err) {
+        console.error("Error inserting ENOs pg db", err.message, err.stack)
+        return false
+    } finally {
+        if(client) {
+            await client.end()
+        }
+    }
 }
 
 export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
@@ -440,10 +484,10 @@ export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByCo
         await pgInsertVotersPerContract(client, byContractRows);
         console.log(client.database, "pg update/insert voters_per_day_contract_round", byContractRows.length, "rows")
 
-        await pgInsertOnConflict(client, "available_claims", {
+        await pgInsertOnConflict(client, "available_claims", claimableRows, {
             onConflictArgument: "(date, account_id, token_code)",
             onConflictCondition: "WHERE excluded.claimable_amount > available_claims.claimable_amount"
-        }, claimableRows)
+        })
         console.log(client.database, "pg update/insert available_claims", claimableRows.length, "rows")
 
         await client.end();
@@ -480,9 +524,16 @@ async function prepareDB(client: sq3.CommonSQLClient) {
         await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
         console.log("DB tables UPDATED to version:", version)
     }
+    if (version == 2) {
+        // upgrade to version 3
+        await client.query(CREATE_TABLE_ENO);
+        version += 1
+        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+        console.log("DB tables UPDATED to version:", version)
+    }
 
-    // if (version == 2) {
-    //     // upgrade to version 3
+    // if (version == 3) {
+    //     // upgrade to version 4
     //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
     //     version += 1
     //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
@@ -533,6 +584,31 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
 
     } catch (err) {
         console.error("Error updating sqlite db", err.message, err.stack)
+    }
+}
+
+async function getENOsDataAndInsertIt() {
+    const enosDir = 'ENOs'
+    const enosFileName = "enosPersistent.json"
+    if(!existsSync(enosDir)) {
+        mkdirSync(enosDir)
+    }
+    const enosFullPath = join(enosDir, enosFileName)
+
+    let startUnixTimestamp = 0
+    if(existsSync(enosFullPath)) {
+        startUnixTimestamp = JSON.parse(readFileSync(enosFullPath).toString()).lastRecordedTimestamp
+    }
+
+    const data = await generateDelegatorTableDataFromTimestampToNow(startUnixTimestamp)
+    if(data.length > 0) {
+        const isSuccess = await insertENOsData(data)
+        if(isSuccess) {
+            const maxTimestamp = data.reduce((max: number, curr: ENO) => {
+                return Math.max(max, Number(curr.unix_timestamp))
+            }, startUnixTimestamp)
+            writeFileSync(enosFullPath, JSON.stringify({lastRecordedTimestamp: maxTimestamp}))
+        } 
     }
 }
 
@@ -613,6 +689,12 @@ async function mainAsyncProcess() {
     await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
     // update remote pgDB
     await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+
+    try {
+        await getENOsDataAndInsertIt()
+    } catch (err) {
+        console.error(err)
+    }
 }
 
 // -----------------------------------------------------
