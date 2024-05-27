@@ -3,7 +3,7 @@ import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
-import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
+// import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 
 
 import { join } from "path";
@@ -385,11 +385,11 @@ async function mainAsyncProcess() {
         metaVote: metrics
     }));
 
-    try {
-        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
-    } catch (err) {
-        console.error(err)
-    }
+    // try {
+    //     await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
+    // } catch (err) {
+    //     console.error(err)
+    // }
 
     // const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
     // // update local SQLite DB - it contains max locked tokens and max voting power per user/day
