@@ -81,10 +81,10 @@ CREATE TABLE IF NOT EXISTS available_claims (
 
 export interface ENO {
   unix_timestamp: number
-  epochId: string
-  poolId: string
-  nonLiquidStake: number
-  liquidStake: number
+  epoch_id: string
+  pool_id: string
+  non_liquid_stake: number
+  liquid_stake: number
 }
 
 export const CREATE_TABLE_ENO = `

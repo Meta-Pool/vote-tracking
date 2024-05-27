@@ -641,7 +641,7 @@ async function mainAsyncProcess() {
         await showClaimsStNear()
         return
     }
-    const isTest = argv.findIndex(i => i == "test")
+    const isTest = argv.findIndex(i => i == "eno")
     if (isTest > 0) {
         await getENOsDataAndInsertIt()
         return

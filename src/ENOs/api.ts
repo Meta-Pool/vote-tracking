@@ -33,7 +33,14 @@ export async function getDelegatorsByEpoch(): Promise<DelegatorsByEpochResponse[
             "x-api-key": API_KEY
         }
     })
-    return response.json()
+    try {
+        let result = await response.json()
+        return result
+    } catch(err) {
+        console.error(err.message, err.stack)
+        console.error(response)
+        throw err
+    }
 }
 
 export async function getDelegatorsForContractAndEpoch(contractId: string, epochId: string) {
