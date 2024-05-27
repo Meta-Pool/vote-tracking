@@ -11,3 +11,4 @@ AllVoters.*.json
 certificate/*.crt
 mpdao-hourly-metrics.json
 last-snapshot-AllVoters.json
+mpdao-hourly-metrics.json

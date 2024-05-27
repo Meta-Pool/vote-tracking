@@ -4,11 +4,8 @@ import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
-import * as sq3 from './util/sq3'
-import { Database as SqLiteDatabase } from "sqlite3";
 
 
-import { Client } from 'pg';
 import { join } from "path";
 import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
 import { getPgConfig } from "./util/postgres";
@@ -320,221 +317,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
 
 }
 
-async function pgInsertOnConflict(client: Client, table: string, onConflict: OnConflictArgs, dbRows: Record<string, any>[]) {
-    await client.query("BEGIN TRANSACTION");
-    let errorReported = false
-    for (const row of dbRows) {
-        const { statement, values } = buildInsert("pg",
-            "insert", table, row, onConflict)
-        try {
-            await client.query(statement, values);
-        } catch (err) {
-            console.error(`inserting on ${table}`)
-            console.error('An error occurred', err);
-            console.error(statement)
-            console.error(values)
-            errorReported = true;
-            break;
-        }
-    }
-    await client.query(errorReported ? "ROLLBACK" : "COMMIT");
-}
 
-
-async function pgInsertVotersHighWaterMark(
-    client: Client,
-    dbRows: VotersRow[]
-) {
-    await pgInsertOnConflict(client, "voters", {
-        onConflictArgument: "(date,account_id)",
-        onConflictCondition: "WHERE excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
-    }, dbRows)
-}
-
-// async function pgInsertVotersHighWaterMark(
-//     client: Client,
-//     dbRows: VotersRow[]
-//   ) {
-//     for (const row of dbRows) {
-//       const query = `
-//         INSERT INTO voters (
-//           date,
-//           account_id,
-//           vp_in_use,
-//           vp_idle,
-//           meta_locked,
-//           meta_unlocking,
-//           meta_unlocked,
-//           vp_in_validators,
-//           vp_in_launches,
-//           vp_in_ambassadors
-//         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-//         ON CONFLICT (date, account_id)
-//         DO UPDATE SET
-//           vp_in_use = excluded.vp_in_use,
-//           vp_idle = excluded.vp_idle,
-//           meta_locked = excluded.meta_locked,
-//           meta_unlocking = excluded.meta_unlocking,
-//           meta_unlocked = excluded.meta_unlocked,
-//           vp_in_validators = excluded.vp_in_validators,
-//           vp_in_launches = excluded.vp_in_launches,
-//           vp_in_ambassadors = excluded.vp_in_ambassadors
-//         WHERE excluded.vp_in_use > voters.vp_in_use
-//       `;
-
-//       const values = [
-//         row.date,
-//         row.account_id,
-//         row.vp_in_use,
-//         row.vp_idle,
-//         row.meta_locked,
-//         row.meta_unlocking,
-//         row.meta_unlocked,
-//         row.vp_in_validators,
-//         row.vp_in_launches,
-//         row.vp_in_ambassadors
-//       ];
-
-//       try {
-//         await client.query(query, values);
-//       } catch (err) {
-//         console.error('An error occurred', err);
-//       }
-//     }
-//   }
-
-async function pgInsertVotersPerContract(
-    client: Client,
-    dbRows: VotersByContractAndRound[]
-) {
-    await pgInsertOnConflict(client, "voters_per_day_contract_round", {
-        onConflictArgument: "(date,contract,round)",
-        onConflictCondition: ""
-    }, dbRows)
-}
-
-export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
-    console.log("Updating pg db")
-    try {
-        const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
-        const client = new Client({
-            host: config.host,
-            user: config.userName,
-            password: config.password,
-            database: useTestnet ? "near_testnet" : "near_mainnet",
-            port: config.port,
-            ssl: {
-                rejectUnauthorized: false,
-                ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
-            },
-        });
-        console.log("db:", client.database)
-        // Connect & create tables if not exist
-        await client.connect();
-        await prepareDB(client)
-        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
-        // so we store the high-water mark for the voter/day
-        await pgInsertVotersHighWaterMark(client, dbRows);
-        console.log(client.database, "pg update/insert voters", dbRows.length, "rows")
-
-        await pgInsertVotersPerContract(client, byContractRows);
-        console.log(client.database, "pg update/insert voters_per_day_contract_round", byContractRows.length, "rows")
-
-        await pgInsertOnConflict(client, "available_claims", {
-            onConflictArgument: "(date, account_id, token_code)",
-            onConflictCondition: "WHERE excluded.claimable_amount > available_claims.claimable_amount"
-        }, claimableRows)
-        console.log(client.database, "pg update/insert available_claims", claimableRows.length, "rows")
-
-        await client.end();
-
-        console.log("pg db updated successfully")
-    } catch (err) {
-        console.error("Error updating pg db", err.message, err.stack)
-    }
-}
-
-async function prepareDB(client: sq3.CommonSQLClient) {
-
-    await client.query(CREATE_TABLE_APP_DEB_VERSION);
-    const result = await client.query(`select max(version) version from app_db_version where app_code='${APP_CODE}'`);
-    let version = result.rows[0].version;
-    if (version == null) { // no rows
-        await client.query(`insert into app_db_version(app_code,version,date_updated) values ('${APP_CODE}',1,'${isoTruncDate()}')`);
-        version = 1
-    }
-    console.log("DB version:", version)
-
-    // create tables if not exists
-    await client.query(CREATE_TABLE_VOTERS);
-    await client.query(CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND);
-    await client.query(CREATE_TABLE_AVAILABLE_CLAIMS);
-
-    // -------------------------------------
-    // UPGRADE DB TABLES VERSION if required
-    // -------------------------------------
-    if (version == 1) {
-        // upgrade to version 2
-        await client.query("ALTER TABLE voters add column vp_for_payment INTEGER")
-        version += 1
-        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
-        console.log("DB tables UPDATED to version:", version)
-    }
-
-    // if (version == 2) {
-    //     // upgrade to version 3
-    //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
-    //     version += 1
-    //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
-    //     console.log("DB tables UPDATED to version:", version)
-    // }
-}
-
-
-export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
-    console.log("Updating sqlite db")
-    try {
-        // Connect & create tables if not exist
-        let DB_FILE = env.DB || "voters.db3" // same as exec dir, for cron job
-        if (useTestnet) DB_FILE = join(homedir(), "voters.db3")
-        console.log("SQLite db file", DB_FILE)
-        let db: SqLiteDatabase = await sq3.open(DB_FILE)
-        let client = new sq3.SQLiteClient(db)
-        await prepareDB(client)
-        // insert/update the rows for this day, ONLY IF vp_in_use/vp_for_payment is higher than the existing value
-        // so we store the high-water mark for the voter/day
-        await sq3.insertOnConflictUpdate(db, "voters", dbRows,
-            {
-                onConflictArgument: "",
-                onConflictCondition: "where excluded.vp_in_use > voters.vp_in_use OR excluded.vp_for_payment > voters.vp_for_payment"
-            }
-        );
-        console.log("sq3 update/insert voters", dbRows.length, "rows")
-
-        await sq3.insertOnConflictUpdate(db, "voters_per_day_contract_round", byContractRows,
-            {
-                onConflictArgument: "",
-                onConflictCondition: ""
-            }
-        );
-        console.log("sq3 update/insert voters_per_day_contract_round", byContractRows.length, "rows")
-
-        if (claimableRows.length > 0) {
-            await sq3.insertOnConflictUpdate(db, "available_claims", claimableRows,
-                {
-                    onConflictArgument: "",
-                    onConflictCondition: "where excluded.claimable_amount > available_claims.claimable_amount"
-                }
-            );
-            console.log("sq3 update/insert available_claims", claimableRows.length, "rows")
-        }
-
-        console.log("sqlite db updated successfully")
-
-    } catch (err) {
-        console.error("Error updating sqlite db", err.message, err.stack)
-    }
-}
 
 async function analyzeSingleFile(filePath: string) {
     let allVoters = JSON.parse(readFileSync(filePath).toString())
@@ -608,11 +391,11 @@ async function mainAsyncProcess() {
         console.error(err)
     }
 
-    const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
-    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
-    // update remote pgDB
-    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+    // const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
+    // // update local SQLite DB - it contains max locked tokens and max voting power per user/day
+    // await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
+    // // update remote pgDB
+    // await updateDbPg(dbRows, dbRows2, availableClaimsRows)
 }
 
 // -----------------------------------------------------
