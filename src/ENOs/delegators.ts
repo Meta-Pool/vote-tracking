@@ -1,4 +1,5 @@
 import { ENO, ENODelegator } from "../util/tables";
+import { sleep } from "../util/util";
 import { DelegatorsByEpochResponse, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch } from "./api";
 
 /* cSpell:disable */
@@ -32,6 +33,8 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
         const epochId = delegatorsByEpoch.epoch_id
         for(const contractId of contracts) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
+            console.log("Delegators for contractId", contractId, delegators.length)
+            
             let liquidStakingAmount = 0
             let nonLiquidStakingAmount = 0
             for(const delegator of delegators) {
@@ -43,11 +46,12 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
             }
             output.push({
                 unix_timestamp: Number(BigInt(delegatorsByEpoch.timestamp) / BigInt(1e9)), // Convert from nano to seconds
-                epochId,
-                poolId: contractId,
-                nonLiquidStake: nonLiquidStakingAmount,
-                liquidStake: liquidStakingAmount,
+                epoch_id: epochId,
+                pool_id: contractId,
+                non_liquid_stake: nonLiquidStakingAmount,
+                liquid_stake: liquidStakingAmount,
             })
+            await sleep(75)
         }
     }
     return output
@@ -82,7 +86,7 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
                     stake
                 })
             }
-            
+            await sleep(75)
         }
     }
     return output
