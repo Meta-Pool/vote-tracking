@@ -96,3 +96,21 @@ CREATE TABLE IF NOT EXISTS eno (
   liquid_stake DOUBLE PRECISION,
   PRIMARY KEY (unix_timestamp, epoch_id, pool_id)
 )`;
+
+export interface ENODelegator {
+  unix_timestamp: number
+  epochId: string
+  poolId: string
+  accountId: string
+  stake: number
+}
+
+export const CREATE_TABLE_ENO_BY_DELEGATOR = `
+CREATE TABLE IF NOT EXISTS eno (
+  unix_timestamp INTEGER,
+  epoch_id TEXT,
+  pool_id TEXT,
+  account_id TEXT,
+  stake DOUBLE PRECISION,
+  PRIMARY KEY (unix_timestamp, epoch_id, pool_id)
+)`;

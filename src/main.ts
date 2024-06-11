@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, VotersByContractAndRound, VotersRow } from "./util/tables";
+import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_ENO_BY_DELEGATOR, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, ENODelegator, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3'
 import { Database as SqLiteDatabase } from "sqlite3";
@@ -19,7 +19,7 @@ import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
-import { generateDelegatorTableDataFromTimestampToNow } from "./ENOs/delegators";
+import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince } from "./ENOs/delegators";
 
 
 type ByContractAndRoundInfoType = {
@@ -359,6 +359,13 @@ async function pgInsertENOsData(
     await pgInsertOnConflict(client, "eno", dbRows)
 }
 
+async function pgInsertENOsByDelegatorsData(
+    client: Client,
+    dbRows: ENODelegator[]
+) {
+    await pgInsertOnConflict(client, "eno_by_delegators", dbRows)
+}
+
 // async function pgInsertVotersHighWaterMark(
 //     client: Client,
 //     dbRows: VotersRow[]
@@ -457,6 +464,42 @@ async function insertENOsData(dbRows: ENO[]) {
     }
 }
 
+async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
+    console.log("Inserting ENOs pg db")
+    const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
+    const client = new Client({
+        host: config.host,
+        user: config.userName,
+        password: config.password,
+        database: useTestnet ? "near_testnet" : "near_mainnet",
+        port: config.port,
+        ssl: {
+            rejectUnauthorized: false,
+            ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
+        },
+    });
+    try {
+        console.log("db:", client.database)
+        // Connect & create tables if not exist
+        await client.connect();
+        await prepareDB(client)
+        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
+        // so we store the high-water mark for the voter/day
+        await pgInsertENOsByDelegatorsData(client, dbRows);
+        console.log(client.database, "pg insert ENOs by delegators", dbRows.length, "rows")
+
+        console.log("ENOs pg db inserted successfully")
+        return true
+    } catch (err) {
+        console.error("Error inserting ENOs pg db", err.message, err.stack)
+        return false
+    } finally {
+        if(client) {
+            await client.end()
+        }
+    }
+}
+
 export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByContractAndRound[], claimableRows: AvailableClaims[]) {
     console.log("Updating pg db")
     try {
@@ -531,9 +574,15 @@ async function prepareDB(client: sq3.CommonSQLClient) {
         await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
         console.log("DB tables UPDATED to version:", version)
     }
-
-    // if (version == 3) {
-    //     // upgrade to version 4
+    if(version == 3) {
+        // upgrade to version 4
+        await client.query(CREATE_TABLE_ENO_BY_DELEGATOR);
+        version += 1
+        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+        console.log("DB tables UPDATED to version:", version)
+    }
+    // if (version == 4) {
+    //     // upgrade to version 5
     //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
     //     version += 1
     //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
@@ -595,12 +644,19 @@ async function getENOsDataAndInsertIt() {
     }
     const enosFullPath = join(enosDir, enosFileName)
 
-    let startUnixTimestamp = 1696129200 /*2023/10/01*/
+    let startUnixTimestamp = 1704078000 /*2024/01/01*/
+    let startUnixTimestampByDelegator = 1704078000 /*2024/01/01*/
     if(existsSync(enosFullPath)) {
-        startUnixTimestamp = JSON.parse(readFileSync(enosFullPath).toString()).lastRecordedTimestamp
+        const enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+        if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+            startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+        }
+        if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+            startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
+        }
     }
 
-    const data = await generateDelegatorTableDataFromTimestampToNow(startUnixTimestamp)
+    const data = await generateDelegatorTableDataSince(startUnixTimestamp)
     if(data.length > 0) {
         const isSuccess = await insertENOsData(data)
         if(isSuccess) {
@@ -608,6 +664,17 @@ async function getENOsDataAndInsertIt() {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
             writeFileSync(enosFullPath, JSON.stringify({lastRecordedTimestamp: maxTimestamp}))
+        } 
+    }
+    
+    const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator)
+    if(dataByDelegator.length > 0) {
+        const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
+        if(isSuccess) {
+            const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
+                return Math.max(max, Number(curr.unix_timestamp))
+            }, startUnixTimestamp)
+            writeFileSync(enosFullPath, JSON.stringify({lastRecordedTimestampByDelegator: maxTimestamp}))
         } 
     }
 }
