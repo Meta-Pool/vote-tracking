@@ -33,7 +33,6 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
         const epochId = delegatorsByEpoch.epoch_id
         for(const contractId of contracts) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
-            console.log("Delegators for contractId", contractId, delegators.length)
             
             let liquidStakingAmount = 0
             let nonLiquidStakingAmount = 0
@@ -74,15 +73,18 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
                 if(stakedNumber > 10000) {
                     delegatorsData[delegator.account_id] = stakedNumber
                 } else {
+                    if(!delegatorsData.hasOwnProperty("minor_delegators_sum")) {
+                        delegatorsData["minor_delegators_sum"] = 0
+                    }
                     delegatorsData["minor_delegators_sum"] += stakedNumber
                 }
             }
             for(const [delegatorAccountId, stake] of Object.entries(delegatorsData)) {
                 output.push({
                     unix_timestamp: Number(BigInt(delegatorsByEpoch.timestamp) / BigInt(1e9)), // Convert from nano to seconds
-                    epochId,
-                    poolId: contractId,
-                    accountId: delegatorAccountId,
+                    epoch_id: epochId,
+                    pool_id: contractId,
+                    account_id: delegatorAccountId,
                     stake
                 })
             }

@@ -363,7 +363,7 @@ async function pgInsertENOsByDelegatorsData(
     client: Client,
     dbRows: ENODelegator[]
 ) {
-    await pgInsertOnConflict(client, "eno_by_delegators", dbRows)
+    await pgInsertOnConflict(client, "eno_by_delegator", dbRows)
 }
 
 // async function pgInsertVotersHighWaterMark(
