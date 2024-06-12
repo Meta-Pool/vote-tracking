@@ -1,6 +1,6 @@
 import { yton } from 'near-api-lite';
 import { AvailableClaims } from '../util/tables.js';
-import { SmartContract, U128String } from './base-smart-contract.js';
+import { SmartContract, U128String, isDryRun } from './base-smart-contract.js';
 import { isoTruncDate } from '../util/convert.js';
 
 export type VotableObjectJSON = {
@@ -59,16 +59,16 @@ export class MpDaoVoteContract extends SmartContract {
 
     // ALL voter info, voter + locking-positions + voting-positions
     async getAllVoters(): Promise<VoterInfo[]> {
+        if (isDryRun()) console.log("start getAllVoters()")
         let voters: VoterInfo[] = []
         const BATCH_SIZE = 75
         let retrieved = BATCH_SIZE
         while (retrieved == BATCH_SIZE) {
             const batch: VoterInfo[] = await this.view("get_voters", { from_index: voters.length, limit: BATCH_SIZE }) as unknown as VoterInfo[]
             retrieved = batch.length
-            //console.log("voters retrieved", retrieved)
             voters = voters.concat(batch)
+            if (isDryRun()) console.log("voters retrieved", voters.length)
         }
-        //console.log("total voters", voters.length)
         return voters
     }
 
