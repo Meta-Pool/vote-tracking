@@ -103,9 +103,10 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
     let dbRows: VotersRow[] = []
 
     // NOTE: only users WITH LOCKING POSITIONS are registered here
-    // migration grace period (no need to vote to gey paid) until July 31st
-    const isGracePeriod = isoTruncDate() < "2024-08"
-    const extendGracePeriodForEthBased = true
+    // migration grace period (no need to vote to gey paid) until July 1st for the NEAR side
+    // waiver including August for the eth side
+    const isGracePeriodNEARSide = isoTruncDate() < "2024-07-01"
+    const extendGracePeriodForEthBased = isoTruncDate() < "2024-09-01"
 
     console.log("processMetaVote, allVoters.length:", allVoters.length)
 
@@ -113,7 +114,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
         if (!voter.locking_positions) continue;
         const voterIsEthMirror = voter.voter_id.endsWith(".evmp.near") || voter.voter_id.endsWith(".evmp.testnet")
 
-        if (isDryRun()) console.log("--", voter.voter_id);
+        // if (isDryRun()) console.log("--", voter.voter_id);
         let userTotalVotingPower = 0
         let userTotalMpDaoLocked = BigInt(0)
         let userTotalMpDaoUnlocking = BigInt(0)
@@ -241,7 +242,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
                 }
             }
 
-            const vp_for_payment = (isGracePeriod || (voterIsEthMirror && extendGracePeriodForEthBased)) ?
+            const vp_for_payment = (isGracePeriodNEARSide || (voterIsEthMirror && extendGracePeriodForEthBased)) ?
                 userTotalVotingPower
                 : userTotalVpInUse;
             dbRows.push({
@@ -385,6 +386,9 @@ async function mainAsyncProcess() {
         metaVote: metrics
     }));
 
+    if (isDryRun()) {
+        console.log("total in mpdao-vote.near contract", metrics.totalLocked + metrics.totalUnlocking + metrics.totalUnLocked)
+    }
     // try {
     //     await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
     // } catch (err) {
@@ -401,11 +405,10 @@ async function mainAsyncProcess() {
 // -----------------------------------------------------
 // -----------------------------------------------------
 console.log(argv)
-setGlobalDryRunMode(argv.includes("dry"));
+export const dryRun = argv.includes("dry")
+setGlobalDryRunMode(dryRun);
 export const useTestnet = argv.includes("test") || argv.includes("testnet") || cwd().includes("testnet");
 export const useMainnet = !useTestnet
-export const dryRun = argv.includes("dry")
-if (dryRun) setGlobalDryRunMode(true)
 
 if (useTestnet) console.log("USING TESTNET")
 export const MPDAO_VOTE_CONTRACT_ID = useMainnet ? "mpdao-vote.near" : "v1.mpdao-vote.testnet"
