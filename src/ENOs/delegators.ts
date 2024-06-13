@@ -70,7 +70,7 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
             const delegatorsData: Record<string, number> = {}
             for(const delegator of delegators) {
                 const stakedNumber = Number(delegator.staked)
-                if(stakedNumber > 50000) {
+                if(stakedNumber > 100000) {
                     delegatorsData[delegator.account_id] = stakedNumber
                 } else {
                     if(!delegatorsData.hasOwnProperty("minor_delegators_sum")) {

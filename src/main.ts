@@ -57,6 +57,11 @@ type MetaVoteMetricsType = {
     totalUnlockingMores240d: number;
 }
 
+type EnoPersistentData = {
+    lastRecordedTimestamp: number
+    lastRecordedTimestampByDelegator: number
+}
+
 export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
     Promise<{
         metrics: MetaVoteMetricsType,
@@ -647,8 +652,9 @@ async function getENOsDataAndInsertIt() {
 
     let startUnixTimestamp = 1704078000 /*2024/01/01*/
     let startUnixTimestampByDelegator = 1704078000 /*2024/01/01*/
+    let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if(existsSync(enosFullPath)) {
-        const enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+        enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
         if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
             startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
         }
@@ -664,7 +670,8 @@ async function getENOsDataAndInsertIt() {
             const maxTimestamp = data.reduce((max: number, curr: ENO) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
-            writeFileSync(enosFullPath, JSON.stringify({lastRecordedTimestamp: maxTimestamp}))
+            writeFileSync(enosFullPath, JSON.stringify({...enosPersistentData, lastRecordedTimestamp: maxTimestamp}))
+            enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
         } 
     }
     
@@ -675,7 +682,8 @@ async function getENOsDataAndInsertIt() {
             const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
-            writeFileSync(enosFullPath, JSON.stringify({lastRecordedTimestampByDelegator: maxTimestamp}))
+            writeFileSync(enosFullPath, JSON.stringify({...enosPersistentData, lastRecordedTimestampByDelegator: maxTimestamp}))
+            enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
         } 
     }
 }
