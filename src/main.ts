@@ -114,7 +114,7 @@ export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dat
     // NOTE: only users WITH LOCKING POSITIONS are registered here
     // migration grace period (no need to vote to gey paid) until July 1st for the NEAR side
     // waiver including August for the eth side
-    const isGracePeriodNEARSide = isoTruncDate() < "2024-07-01"
+    const isGracePeriodNEARSide = isoTruncDate() < "2024-06-01"
     const extendGracePeriodForEthBased = isoTruncDate() < "2024-09-01"
 
     console.log("processMetaVote, allVoters.length:", allVoters.length)
