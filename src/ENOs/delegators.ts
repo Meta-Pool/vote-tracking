@@ -14,7 +14,7 @@ const contracts = [
     "piertwopool.poolv1.near",
     "vodafonedab.poolv1.near",
     "staking4all.poolv1.near",
-    // "nttdata",
+    "colossus.poolv1.near",
 ]
 /* cSpell:enable */
 
@@ -23,15 +23,26 @@ const liquidStakingAccounts = [
     "linear-protocol.near",
 ]
 
-export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/): Promise<ENO[]> {
+export function getENOsContracts() {
+    return contracts
+}
+
+/**
+ * Generate all the table data from the timestamp provided for all the contracts provided grouping by liquid and non liquid staking
+ * @param startUnixTimestamp defaults to 2024/01/01
+ * @param contractIdArray defaults to all the contracts in the contracts array
+ * @returns 
+ */
+export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
     const output = [] as ENO[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
-        return Number(BigInt(epochData.timestamp) / BigInt(1e9)) > startUnixTimestamp
+        const timestamp = Number(BigInt(epochData.timestamp) / BigInt(1e9))
+        return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
-        for(const contractId of contracts) {
+        for(const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             
             let liquidStakingAmount = 0
@@ -56,16 +67,22 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
     return output
 }
 
-
-export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/): Promise<ENODelegator[]> {
+/**
+ * Generate all the table data from the timestamp provided for all the contracts provided, leaving big delegators by themselves, and grouping by small delegators (< 100k)
+ * @param startUnixTimestamp defaults to 2024/01/01
+ * @param contractIdArray defaults to all the contracts in the contracts array
+ * @returns 
+ */
+export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENODelegator[]> {
     const output = [] as ENODelegator[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
-        return Number(BigInt(epochData.timestamp) / BigInt(1e9)) > startUnixTimestamp
+        const timestamp = Number(BigInt(epochData.timestamp) / BigInt(1e9))
+        return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
-        for(const contractId of contracts) {
+        for(const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             const delegatorsData: Record<string, number> = {}
             for(const delegator of delegators) {

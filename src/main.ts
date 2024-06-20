@@ -19,7 +19,7 @@ import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
-import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince } from "./ENOs/delegators";
+import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getENOsContracts } from "./ENOs/delegators";
 
 
 type ByContractAndRoundInfoType = {
@@ -642,7 +642,7 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
     }
 }
 
-async function getENOsDataAndInsertIt() {
+async function getENOsDataAndInsertIt(contract?: string) {
     const enosDir = 'ENOs'
     const enosFileName = "enosPersistent.json"
     if(!existsSync(enosDir)) {
@@ -650,23 +650,38 @@ async function getENOsDataAndInsertIt() {
     }
     const enosFullPath = join(enosDir, enosFileName)
 
-    let startUnixTimestamp = 1704078000 /*2024/01/01*/
-    let startUnixTimestampByDelegator = 1704078000 /*2024/01/01*/
+    // let startUnixTimestamp = 1704078000 /*2024/01/01*/
+    // let startUnixTimestampByDelegator = 1704078000 /*2024/01/01*/
+    let startUnixTimestamp = 1718739689 /*2024/01/01*/
+    let startUnixTimestampByDelegator = 1718739689 /*2024/01/01*/
+    let endUnixTimestamp = Date.now()
+    let endUnixTimestampByDelegator = Date.now()
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
-    if(existsSync(enosFullPath)) {
+    if(existsSync(enosFullPath)) { 
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
-            startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+        if(contract) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
+            if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+                endUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+            } 
+            if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+                endUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
+            } 
+        } else {
+            if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+                startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+            } 
+            if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+                startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
+            } 
         }
-        if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
-            startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-        }
+        
     }
 
-    const data = await generateDelegatorTableDataSince(startUnixTimestamp)
+    const contracts = contract ? [contract] : getENOsContracts()
+    const data = await generateDelegatorTableDataSince(startUnixTimestamp, endUnixTimestamp, contracts)
     if(data.length > 0) {
         const isSuccess = await insertENOsData(data)
-        if(isSuccess) {
+        if(isSuccess && !contract) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = data.reduce((max: number, curr: ENO) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
@@ -675,10 +690,10 @@ async function getENOsDataAndInsertIt() {
         } 
     }
     
-    const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator)
+    const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator, endUnixTimestampByDelegator, contracts)
     if(dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
-        if(isSuccess) {
+        if(isSuccess && !contract) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
@@ -717,9 +732,11 @@ async function mainAsyncProcess() {
         await showClaimsStNear()
         return
     }
-    const isTest = argv.findIndex(i => i == "eno")
-    if (isTest > 0) {
-        await getENOsDataAndInsertIt()
+    const addEnosContractInx = argv.findIndex(i => i == "add-eno")
+    if (addEnosContractInx > 0) {
+        const contract = argv[addEnosContractInx + 1]
+        console.log("Adding all data from validator:", contract || "all validators")
+        await getENOsDataAndInsertIt(contract)
         return
     }
 
