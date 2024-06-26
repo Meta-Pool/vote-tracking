@@ -1,3 +1,4 @@
+import { isDryRun } from "../contracts/base-smart-contract";
 import { ENO, ENODelegator } from "../util/tables";
 import { sleep } from "../util/util";
 import { DelegatorsByEpochResponse, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch } from "./api";
@@ -43,11 +44,12 @@ export function getENOsContracts() {
 
 /**
  * Generate all the table data from the timestamp provided for all the contracts provided grouping by liquid and non liquid staking
- * @param startUnixTimestamp defaults to 2024/01/01
+ * @param startUnixTimestamp defaults to 2023/11/01
  * @param contractIdArray defaults to all the contracts in the contracts array
  * @returns 
  */
 export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
+    if(isDryRun()) console.log("Getting ENOs liquidity data from", startUnixTimestamp, "to", endUnixTimestamp)
     const output = [] as ENO[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
@@ -56,6 +58,7 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
+        if(isDryRun()) console.log("Getting data for epochId", epochId,)
         for(const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             
@@ -83,11 +86,12 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
 
 /**
  * Generate all the table data from the timestamp provided for all the contracts provided, leaving big delegators by themselves, and grouping by small delegators (< 100k)
- * @param startUnixTimestamp defaults to 2024/01/01
+ * @param startUnixTimestamp defaults to 2023/11/01
  * @param contractIdArray defaults to all the contracts in the contracts array
  * @returns 
  */
 export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENODelegator[]> {
+    if(isDryRun()) console.log("Getting ENOs liquidity data by delegator from", startUnixTimestamp, "to", endUnixTimestamp)
     const output = [] as ENODelegator[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
@@ -96,6 +100,7 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
+        if(isDryRun()) console.log("Getting data for epochId", epochId)
         for(const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             const delegatorsData: Record<string, number> = {}

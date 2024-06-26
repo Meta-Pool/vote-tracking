@@ -15,7 +15,7 @@ import { getPgConfig } from "./util/postgres";
 import { consoleShowVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
-import { showMigrated } from "./migration/show-migrated";
+import { getContracts, showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
@@ -652,8 +652,9 @@ async function getENOsDataAndInsertIt(contract?: string) {
 
     let startUnixTimestamp = 1698807600 /*2023/11/01*/
     let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
-    let endUnixTimestamp = Date.now()
-    let endUnixTimestampByDelegator = Date.now()
+    const ONE_MONTH_IN_SECONDS = 30*24*60*60
+    let endUnixTimestamp = startUnixTimestamp + ONE_MONTH_IN_SECONDS
+    let endUnixTimestampByDelegator = startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if(existsSync(enosFullPath)) { 
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
@@ -667,9 +668,11 @@ async function getENOsDataAndInsertIt(contract?: string) {
         } else {
             if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
                 startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+                endUnixTimestamp = Math.min(startUnixTimestamp + ONE_MONTH_IN_SECONDS, Date.now())
             } 
             if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
                 startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
+                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS, Date.now())
             } 
         }
         
@@ -732,7 +735,8 @@ async function mainAsyncProcess() {
     }
     const addEnosContractInx = argv.findIndex(i => i == "add-eno")
     if (addEnosContractInx > 0) {
-        const contract = argv[addEnosContractInx + 1]
+        const nextArg = argv[addEnosContractInx + 1]
+        const contract = getENOsContracts().includes(nextArg) ? nextArg : undefined
         console.log("Adding all data from validator:", contract || "all validators")
         await getENOsDataAndInsertIt(contract)
         return
@@ -741,7 +745,7 @@ async function mainAsyncProcess() {
 
     let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
     const allVoters = await mpDaoVote.getAllVoters();
-
+    if(isDryRun()) console.log("All voters", allVoters.length)
     if (argv.findIndex(i => i == "show-voters") > 0) {
         console.log(JSON.stringify(allVoters, undefined, 4))
         return
