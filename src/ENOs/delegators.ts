@@ -4,17 +4,31 @@ import { DelegatorsByEpochResponse, getDelegatorsByEpoch, getDelegatorsForContra
 
 /* cSpell:disable */
 const contracts = [
-    "everstake.poolv1.near",
+    "northstake.poolv1.near",
+    "colossus.poolv1.near",
     "luganodes.pool.near",
-    "dacmpool.poolv1.near",
-    "stakecito.poolv1.near",
+    "senseinode.poolv1.near",
+    "dsrvlabs-staking.poolv1.near",
+    "tritonone.poolv1.near",
+    "stakin.poolv1.near",
     "frensvalidator.poolv1.near",
     "grassets.poolv1.near",
+    "nodes.poolv1.near",
+    "alphanodes.poolv1.near",
+    "a41.poolv1.near",
+    "mexican.pool.near",
+    "stablelab.poolv1.near",
+    "alumlabs.poolv1.near",
+    "stakecraft.poolv1.near",
     "centurion.poolv1.near",
     "piertwopool.poolv1.near",
+    "stakecito.poolv1.near",
+    "dacmpool.poolv1.near",
     "vodafonedab.poolv1.near",
+    "staketab.poolv1.near",
+    "everstake.poolv1.near",
+    "nacioncrypto-parceros.poolv1.near",
     "staking4all.poolv1.near",
-    "colossus.poolv1.near",
 ]
 /* cSpell:enable */
 
@@ -33,7 +47,7 @@ export function getENOsContracts() {
  * @param contractIdArray defaults to all the contracts in the contracts array
  * @returns 
  */
-export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
+export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
     const output = [] as ENO[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
@@ -73,7 +87,7 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
  * @param contractIdArray defaults to all the contracts in the contracts array
  * @returns 
  */
-export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1704078000 /*2024/01/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENODelegator[]> {
+export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENODelegator[]> {
     const output = [] as ENODelegator[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {

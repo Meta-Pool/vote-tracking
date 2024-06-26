@@ -650,8 +650,8 @@ async function getENOsDataAndInsertIt(contract?: string) {
     }
     const enosFullPath = join(enosDir, enosFileName)
 
-    let startUnixTimestamp = 1704078000 /*2024/01/01*/
-    let startUnixTimestampByDelegator = 1704078000 /*2024/01/01*/
+    let startUnixTimestamp = 1698807600 /*2023/11/01*/
+    let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
     let endUnixTimestamp = Date.now()
     let endUnixTimestampByDelegator = Date.now()
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
