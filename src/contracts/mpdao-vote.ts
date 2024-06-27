@@ -61,7 +61,7 @@ export class MpDaoVoteContract extends SmartContract {
     async getAllVoters(): Promise<VoterInfo[]> {
         if (isDryRun()) console.log("start getAllVoters()")
         let voters: VoterInfo[] = []
-        const BATCH_SIZE = 75
+        const BATCH_SIZE = 50
         let retrieved = BATCH_SIZE
         while (retrieved == BATCH_SIZE) {
             const batch: VoterInfo[] = await this.view("get_voters", { from_index: voters.length, limit: BATCH_SIZE }) as unknown as VoterInfo[]
