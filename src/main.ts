@@ -742,58 +742,61 @@ async function mainAsyncProcess() {
         return
     }
 
-
-    let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
-    const allVoters = await mpDaoVote.getAllVoters();
-    if(isDryRun()) console.log("All voters", allVoters.length)
-    if (argv.findIndex(i => i == "show-voters") > 0) {
-        console.log(JSON.stringify(allVoters, undefined, 4))
-        return
-    }
-    const computeAsDateInx = argv.findIndex(i => i == "compute-as-date")
-    if (computeAsDateInx > 0) {
-        await computeAsDate(argv[computeAsDateInx + 1], allVoters)
-        return
-    }
-
-    // backup all voters snapshot (one per hour)
-    // TODO: remove old backups
-    {
-        const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
-        const monthDir = dateIsoFile.slice(0, 7)
-        if (!existsSync(monthDir)) {
-            mkdirSync(monthDir)
-        }
-        try {
-            writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
-            writeFileSync(`last-snapshot-AllVoters.json`, JSON.stringify(allVoters));
-        } catch (ex) {
-            console.error(ex)
-        }
-    }
-
-    let { metrics, dbRows, dbRows2 } = await processMpDaoVote(allVoters);
-    console.log(metrics)
-    if (isDryRun()) {
-        console.log("total in mpdao-vote.near contract", metrics.totalLocked + metrics.totalUnlocking + metrics.totalUnLocked)
-    }
-
-    writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
-        metaVote: metrics
-    }));
-
     try {
-        await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
+        let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+        const allVoters = await mpDaoVote.getAllVoters();
+        if(isDryRun()) console.log("All voters", allVoters.length)
+        if (argv.findIndex(i => i == "show-voters") > 0) {
+            console.log(JSON.stringify(allVoters, undefined, 4))
+            return
+        }
+        const computeAsDateInx = argv.findIndex(i => i == "compute-as-date")
+        if (computeAsDateInx > 0) {
+            await computeAsDate(argv[computeAsDateInx + 1], allVoters)
+            return
+        }
+
+        // backup all voters snapshot (one per hour)
+        // TODO: remove old backups
+        {
+            const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
+            const monthDir = dateIsoFile.slice(0, 7)
+            if (!existsSync(monthDir)) {
+                mkdirSync(monthDir)
+            }
+            try {
+                writeFileSync(join(monthDir, `AllVoters.${dateIsoFile}.json`), JSON.stringify(allVoters));
+                writeFileSync(`last-snapshot-AllVoters.json`, JSON.stringify(allVoters));
+            } catch (ex) {
+                console.error(ex)
+            }
+        }
+
+        let { metrics, dbRows, dbRows2 } = await processMpDaoVote(allVoters);
+        console.log(metrics)
+        if (isDryRun()) {
+            console.log("total in mpdao-vote.near contract", metrics.totalLocked + metrics.totalUnlocking + metrics.totalUnLocked)
+        }
+
+        writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
+            metaVote: metrics
+        }));
+    
+
+        try {
+            await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
+        } catch (err) {
+            console.error(err)
+        }
+
+        const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
+        // update local SQLite DB - it contains max locked tokens and max voting power per user/day
+        await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
+        // update remote pgDB
+        await updateDbPg(dbRows, dbRows2, availableClaimsRows)
     } catch (err) {
         console.error(err)
     }
-
-    const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
-    // update local SQLite DB - it contains max locked tokens and max voting power per user/day
-    await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
-    // update remote pgDB
-    await updateDbPg(dbRows, dbRows2, availableClaimsRows)
-
     try {
         await getENOsDataAndInsertIt()
     } catch (err) {
