@@ -741,14 +741,9 @@ async function mainAsyncProcess() {
         await getENOsDataAndInsertIt(contract)
         return
     }
-
-    // TEST
-    if (dryRun) {
-        try {
-            await setRecentlyFreezedFoldersVotes()
-        } catch (err) {
-            console.error(err)
-        }
+    const closeRound = argv.findIndex(i => i == "close-round")
+    if (closeRound > 0) {
+        await setRecentlyFreezedFoldersVotes()
         return
     }
     // --------------

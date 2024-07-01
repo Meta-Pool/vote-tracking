@@ -106,8 +106,12 @@ export async function setRecentlyFreezedFoldersVotes() {
         const projectVotes = votes[project.id] || BigInt("1")
         const percentage = totalVotesInFolder == BigInt("0") ? 0 : projectVotes * BigInt(10 ** 4) / totalVotesInFolder
         console.log(project.id, projectVotes, Number(percentage.toString()))
-        await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
-        await sleep(2000)
+        try {
+            await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
+        } catch (ex) {
+            console.error(ex)
+        }
+        await sleep(3000)
     }
 }
 
