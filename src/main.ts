@@ -37,7 +37,7 @@ type MetaVoteMetricsType = {
     totalVotingPower: number;
     totalVotingPowerUsed: number;
     votesPerContractAndRound: ByContractAndRoundInfoType[];
-    
+
     totalLocking30d: number;
     totalLocking60d: number;
     totalLocking90d: number;
@@ -464,7 +464,7 @@ async function insertENOsData(dbRows: ENO[]) {
         console.error("Error inserting ENOs pg db", err.message, err.stack)
         return false
     } finally {
-        if(client) {
+        if (client) {
             await client.end()
         }
     }
@@ -500,7 +500,7 @@ async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
         console.error("Error inserting ENOs pg db", err.message, err.stack)
         return false
     } finally {
-        if(client) {
+        if (client) {
             await client.end()
         }
     }
@@ -580,7 +580,7 @@ async function prepareDB(client: sq3.CommonSQLClient) {
         await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
         console.log("DB tables UPDATED to version:", version)
     }
-    if(version == 3) {
+    if (version == 3) {
         // upgrade to version 4
         await client.query(CREATE_TABLE_ENO_BY_DELEGATOR);
         version += 1
@@ -645,62 +645,62 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
 async function getENOsDataAndInsertIt(contract?: string) {
     const enosDir = 'ENOs'
     const enosFileName = "enosPersistent.json"
-    if(!existsSync(enosDir)) {
+    if (!existsSync(enosDir)) {
         mkdirSync(enosDir)
     }
     const enosFullPath = join(enosDir, enosFileName)
 
     let startUnixTimestamp = 1698807600 /*2023/11/01*/
     let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
-    const ONE_MONTH_IN_SECONDS = 30*24*60*60
+    const ONE_MONTH_IN_SECONDS = 30 * 24 * 60 * 60
     let endUnixTimestamp = startUnixTimestamp + ONE_MONTH_IN_SECONDS
     let endUnixTimestampByDelegator = startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
-    if(existsSync(enosFullPath)) { 
+    if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        if(contract) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
-            if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+        if (contract) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
+            if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
                 endUnixTimestamp = enosPersistentData.lastRecordedTimestamp
-            } 
-            if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+            }
+            if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
                 endUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-            } 
+            }
         } else {
-            if(enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+            if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
                 startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
                 endUnixTimestamp = Math.min(startUnixTimestamp + ONE_MONTH_IN_SECONDS, Date.now())
-            } 
-            if(enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+            }
+            if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
                 startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
                 endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS, Date.now())
-            } 
+            }
         }
-        
+
     }
 
     const contracts = contract !== undefined ? [contract] : getENOsContracts()
     const data = await generateDelegatorTableDataSince(startUnixTimestamp, endUnixTimestamp, contracts)
-    if(data.length > 0) {
+    if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
-        if(isSuccess && !contract) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
+        if (isSuccess && !contract) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = data.reduce((max: number, curr: ENO) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
-            writeFileSync(enosFullPath, JSON.stringify({...enosPersistentData, lastRecordedTimestamp: maxTimestamp}))
+            writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestamp: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        } 
+        }
     }
-    
+
     const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator, endUnixTimestampByDelegator, contracts)
-    if(dataByDelegator.length > 0) {
+    if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
-        if(isSuccess && !contract) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
+        if (isSuccess && !contract) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
-            writeFileSync(enosFullPath, JSON.stringify({...enosPersistentData, lastRecordedTimestampByDelegator: maxTimestamp}))
+            writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestampByDelegator: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        } 
+        }
     }
 }
 
@@ -742,13 +742,24 @@ async function mainAsyncProcess() {
         return
     }
 
+    // TEST
+    if (dryRun) {
+        try {
+            await setRecentlyFreezedFoldersVotes()
+        } catch (err) {
+            console.error(err)
+        }
+        return
+    }
+    // --------------
+
     // --------------
     // processes that use get_all_voters
     // --------------
     try {
         let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
         const allVoters = await mpDaoVote.getAllVoters();
-        if(isDryRun()) console.log("All voters", allVoters.length)
+        if (isDryRun()) console.log("All voters", allVoters.length)
         if (argv.findIndex(i => i == "show-voters") > 0) {
             console.log(JSON.stringify(allVoters, undefined, 4))
             return
@@ -784,18 +795,22 @@ async function mainAsyncProcess() {
             metaVote: metrics
         }));
 
-        // close rounds for grants
-        try {
-            await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
-        } catch (err) {
-            console.error(err)
-        }
-
         const availableClaimsRows = await mpDaoVote.getAllStnearClaims()
         // update local SQLite DB - it contains max locked tokens and max voting power per user/day
         await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
         // update remote pgDB
         await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+    } catch (err) {
+        console.error(err)
+    }
+
+    // see if we need to register closing voting-rounds for grants
+    // from day 1 to day 7 of each month
+    try {
+        let dayOfTheMonth = new Date().getDate()
+        if (dayOfTheMonth >= 1 && dayOfTheMonth <= 7) {
+            await setRecentlyFreezedFoldersVotes()
+        }
     } catch (err) {
         console.error(err)
     }
