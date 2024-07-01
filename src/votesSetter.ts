@@ -3,9 +3,9 @@ import { FolderData, MetaPipelineContract, ProjectMetadataJson } from "./contrac
 import { VoterInfo } from "./contracts/mpdao-vote";
 import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID } from "./main";
 import { getCredentials } from "./util/near";
+import { sleep } from "./util/util";
 
 export async function setRecentlyFreezedFoldersVotes(allVoters: VoterInfo[], useMainnet: boolean) {
-    const votes: Record<number, bigint> = processVoters(allVoters)
 
     const credentials = getCredentials(META_PIPELINE_OPERATOR_ID)
     
@@ -14,12 +14,14 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: VoterInfo[], use
     const folders: FolderData[] = await metaPipelineContract.getFolders()
 
     const nowInSeconds = Date.now() / 1000
+    // get folders freezed and with votes closed
     const voteCompletedFolders = folders.filter((folder: FolderData) => {
         return folder.freeze_unix_timestamp <= nowInSeconds && folder.end_vote_timestamp <= nowInSeconds
     })
 
     if(voteCompletedFolders.length === 0) return
 
+    // get the folder with max end_vote_timestamp
     const folderToUpdate = voteCompletedFolders.reduce((latestFinishedFolder: FolderData, curr: FolderData) => {
         if(curr.end_vote_timestamp > latestFinishedFolder.end_vote_timestamp) {
             return curr
@@ -28,17 +30,23 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: VoterInfo[], use
         }
     }, voteCompletedFolders[0])
 
+    // get all project meta-data in the folder
     const projectsMetadata: ProjectMetadataJson[] = await metaPipelineContract.getProjectsInFolder(folderToUpdate.folder_id)
+    // filter only validated projects
     const validatedProjectsMetadata: ProjectMetadataJson[] = projectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.is_validated
     })
 
+    // select all the non-updated yet (votes==0)
     const projectsToUpdate: ProjectMetadataJson[] = validatedProjectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.votes === "0"
     })
 
     if(projectsToUpdate.length === 0) return
 
+    // sum votes per-project
+    const votes: Record<number, bigint> = processVoters(allVoters)
+    // compute totalVotesInFolder to calculate votes pct
     const projectIdsInFolder: number[] = validatedProjectsMetadata.map((project: ProjectMetadataJson) => project.id)
     const totalVotesInFolder: bigint = Object.keys(votes).reduce((sum: bigint, idAsString: string) => {
         if(projectIdsInFolder.includes(Number(idAsString))) {
@@ -53,7 +61,10 @@ export async function setRecentlyFreezedFoldersVotes(allVoters: VoterInfo[], use
         const projectVotes = votes[project.id] || BigInt("1")
         const percentage = totalVotesInFolder==BigInt("0")? 0 : projectVotes * BigInt(10 ** 4) / totalVotesInFolder
         console.log(project.id, projectVotes, Number(percentage.toString()))
-        if (useMainnet) await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
+        if (useMainnet) {
+            await metaPipelineContract.setVotes(project.id, projectVotes.toString(), Number(percentage.toString()))
+            await sleep(2000)
+        }
     }
 }
 

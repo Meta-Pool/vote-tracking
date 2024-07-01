@@ -742,6 +742,9 @@ async function mainAsyncProcess() {
         return
     }
 
+    // --------------
+    // processes that use get_all_voters
+    // --------------
     try {
         let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
         const allVoters = await mpDaoVote.getAllVoters();
@@ -755,7 +758,6 @@ async function mainAsyncProcess() {
             await computeAsDate(argv[computeAsDateInx + 1], allVoters)
             return
         }
-
         // backup all voters snapshot (one per hour)
         // TODO: remove old backups
         {
@@ -781,8 +783,8 @@ async function mainAsyncProcess() {
         writeFileSync("mpdao-hourly-metrics.json", JSON.stringify({
             metaVote: metrics
         }));
-    
 
+        // close rounds for grants
         try {
             await setRecentlyFreezedFoldersVotes(allVoters, useMainnet)
         } catch (err) {
@@ -797,6 +799,7 @@ async function mainAsyncProcess() {
     } catch (err) {
         console.error(err)
     }
+
     try {
         await getENOsDataAndInsertIt()
     } catch (err) {
