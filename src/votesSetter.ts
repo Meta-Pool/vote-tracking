@@ -65,14 +65,22 @@ export async function setRecentlyFreezedFoldersVotes() {
 
     console.log("folder to update", folderToUpdate)
 
-    let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
-
     // get all project meta-data in the folder
     const projectsMetadata: ProjectMetadataJson[] = await metaPipelineContract.getProjectsInFolder(folderToUpdate.folder_id)
     // filter only validated projects
     const validatedProjectsMetadata: ProjectMetadataJson[] = projectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.is_validated
     })
+
+    // TEST -- erase snapshot commands
+    if (dryRun && process.argv.includes("remove-calls")) {
+        for (let project of validatedProjectsMetadata) {
+            console.log(`near call meta-pipeline.near set_votes '{"project_id":${project.id},"total_votes":"0","total_votes_percentage_bp":0}' --useAccount pipeline-operator.near --depositYocto 1`)
+        }
+    }
+
+    // get first snapshot after votes closed
+    let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
 
     // select all the non-updated yet (votes==0)
     const projectsToUpdate: ProjectMetadataJson[] = validatedProjectsMetadata.filter((project: ProjectMetadataJson) => {
