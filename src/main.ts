@@ -652,9 +652,9 @@ async function getENOsDataAndInsertIt(contract?: string) {
 
     let startUnixTimestamp = 1698807600 /*2023/11/01*/
     let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
-    const ONE_MONTH_IN_SECONDS = 30 * 24 * 60 * 60
-    let endUnixTimestamp = startUnixTimestamp + ONE_MONTH_IN_SECONDS
-    let endUnixTimestampByDelegator = startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS
+    const THREE_MONTH_IN_SECONDS = 3 * 30 * 24 * 60 * 60
+    let endUnixTimestamp = startUnixTimestamp + THREE_MONTH_IN_SECONDS
+    let endUnixTimestampByDelegator = startUnixTimestampByDelegator + THREE_MONTH_IN_SECONDS
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
@@ -668,11 +668,11 @@ async function getENOsDataAndInsertIt(contract?: string) {
         } else {
             if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
                 startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
-                endUnixTimestamp = Math.min(startUnixTimestamp + ONE_MONTH_IN_SECONDS, Date.now())
+                endUnixTimestamp = Math.min(startUnixTimestamp + THREE_MONTH_IN_SECONDS, Date.now())
             }
             if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
                 startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS, Date.now())
+                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + THREE_MONTH_IN_SECONDS, Date.now())
             }
         }
 
@@ -735,10 +735,13 @@ async function mainAsyncProcess() {
     }
     const addEnosContractInx = argv.findIndex(i => i == "add-eno")
     if (addEnosContractInx > 0) {
+        const start = Date.now()
         const nextArg = argv[addEnosContractInx + 1]
         const contract = getENOsContracts().includes(nextArg) ? nextArg : undefined
         console.log("Adding all data from validator:", contract || "all validators")
         await getENOsDataAndInsertIt(contract)
+        const end = Date.now()
+        console.log("Elapsed time", (end - start) / (1000 * 60), "minutes")
         return
     }
     const closeRound = argv.findIndex(i => i == "close-round")
