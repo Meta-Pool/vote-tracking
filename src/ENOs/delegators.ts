@@ -54,7 +54,7 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
     })
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
-        if(isDryRun()) console.log("Getting data for epochId", epochId,)
+        if(isDryRun()) console.log("Getting data for epochId", epochId)
         for(const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             
@@ -62,9 +62,9 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
             let nonLiquidStakingAmount = 0
             for(const delegator of delegators) {
                 if(liquidStakingAccounts.includes(delegator.account_id)) {
-                    liquidStakingAmount += Number(delegator.staked)
+                    liquidStakingAmount += Number(delegator.staked_amount)
                 } else {
-                    nonLiquidStakingAmount += Number(delegator.staked)
+                    nonLiquidStakingAmount += Number(delegator.staked_amount)
                 }
             }
             output.push({
@@ -101,7 +101,7 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             const delegatorsData: Record<string, number> = {}
             for(const delegator of delegators) {
-                const stakedNumber = Number(delegator.staked)
+                const stakedNumber = Number(delegator.staked_amount)
                 if(stakedNumber > 100000) {
                     delegatorsData[delegator.account_id] = stakedNumber
                 } else {
