@@ -26,6 +26,7 @@ const contracts = [
     "staketab.poolv1.near",
     "nacioncrypto-parceros.poolv1.near",
     "pairpoint.poolv1.near",
+    "bcw-technologies.poolv1.near",
 ]
 /* cSpell:enable */
 
