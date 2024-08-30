@@ -21,10 +21,15 @@ export function getVotesSnapshot(endVoteTimestampSeconds: number): VoterInfo[] {
     const regex = new RegExp(`^AllVoters\\.${dateIsoFilePrefix}(.+)\\.json$`)
     if (dryRun) console.log(regex)
     let minTimeFound = ""
+    let isFirstMatch = true
     for (let file of files) {
         const match = file.match(regex);
         if (dryRun) console.log(file, match)
         if (match) {
+            if (isFirstMatch) {
+                isFirstMatch = false
+                continue
+            }
             const time = match[1]
             if (!minTimeFound || time < minTimeFound) { minTimeFound = time }
         }
