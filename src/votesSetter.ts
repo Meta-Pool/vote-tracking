@@ -52,8 +52,7 @@ export async function setRecentlyFreezedFoldersVotes() {
         return folder.freeze_unix_timestamp <= nowInSeconds && folder.end_vote_timestamp <= nowInSeconds
     })
 
-    if (voteCompletedFolders.length === 0) return
-
+    
     // get the folder with max end_vote_timestamp
     const folderToUpdate = voteCompletedFolders.reduce((latestFinishedFolder: FolderData, curr: FolderData) => {
         if (curr.end_vote_timestamp > latestFinishedFolder.end_vote_timestamp) {
@@ -62,23 +61,24 @@ export async function setRecentlyFreezedFoldersVotes() {
             return latestFinishedFolder
         }
     }, voteCompletedFolders[0])
-
+    
     console.log("folder to update", folderToUpdate)
-
+    
     // get all project meta-data in the folder
     const projectsMetadata: ProjectMetadataJson[] = await metaPipelineContract.getProjectsInFolder(folderToUpdate.folder_id)
     // filter only validated projects
     const validatedProjectsMetadata: ProjectMetadataJson[] = projectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.is_validated
     })
-
+    
     // TEST -- erase snapshot commands
     if (dryRun && process.argv.includes("remove-calls")) {
         for (let project of validatedProjectsMetadata) {
             console.log(`near call meta-pipeline.near set_votes '{"project_id":${project.id},"total_votes":"0","total_votes_percentage_bp":0}' --useAccount pipeline-operator.near --depositYocto 1`)
         }
     }
-
+    
+    if (voteCompletedFolders.length === 0) return
     // get first snapshot after votes closed
     let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
 
