@@ -75,6 +75,12 @@ export async function setRecentlyFreezedFoldersVotes() {
     if (dryRun && process.argv.includes("remove-calls")) {
         for (let project of validatedProjectsMetadata) {
             console.log(`near call meta-pipeline.near set_votes '{"project_id":${project.id},"total_votes":"0","total_votes_percentage_bp":0}' --useAccount pipeline-operator.near --depositYocto 1`)
+                try {
+                    await metaPipelineContract.setVotes(project.id, "0", 0)
+                } catch (ex) {
+                    console.error(ex)
+                }
+                await sleep(3000)
         }
     }
     
