@@ -14,7 +14,7 @@ export function getVotesSnapshot(endVoteTimestampSeconds: number): VoterInfo[] {
     const endVoteDate = new Date(endVoteTimestampSeconds * 1000)
     const afterEndVoteDate = new Date((endVoteTimestampSeconds + 60 * 5) * 1000)
     console.log("getVotesSnapshot", endVoteDate.toISOString())
-    const dateIsoFilePrefix = afterEndVoteDate.toISOString().slice(0, 11) // 2024-07-01T
+    const dateIsoFilePrefix = afterEndVoteDate.toISOString().slice(0, 14) // 2024-07-01T13-
     const monthDir = dateIsoFilePrefix.slice(0, 7)
     console.log(`read dir ${monthDir}`)
     let files = fs.readdirSync(monthDir)
