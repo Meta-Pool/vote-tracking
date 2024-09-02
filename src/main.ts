@@ -806,7 +806,7 @@ async function mainAsyncProcess() {
     // from day 1 to day 7 of each month
     try {
         let dayOfTheMonth = new Date().getDate()
-        if (dayOfTheMonth >= 1 && dayOfTheMonth <= 7) {
+        if (dayOfTheMonth >= 22 || dayOfTheMonth <= 7) {
             await setRecentlyFreezedFoldersVotes()
         }
     } catch (err) {
