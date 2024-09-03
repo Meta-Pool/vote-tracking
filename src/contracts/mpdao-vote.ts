@@ -115,4 +115,12 @@ export class MpDaoVoteContract extends SmartContract {
         return this.call("migration_set_associated_data", { data: usersData });
     }
 
+    async get_lock_in_vote_filters() {
+        return this.view("get_lock_in_vote_filters")
+    }
+
+    async set_lock_in_vote_filters(end_timestamp_ms: number, votable_numeric_id: number, votable_address?: string) {
+        return this.call("set_lock_in_vote_filters", { end_timestamp_ms, votable_numeric_id, votable_address })
+    }
+
 }
