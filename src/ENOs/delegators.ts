@@ -35,17 +35,20 @@ export function getENOsContracts() {
 export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
     if(isDryRun()) console.log("Getting ENOs liquidity data from", startUnixTimestamp, "to", endUnixTimestamp)
     const output = [] as ENO[]
+    console.log("Getting delegators by epoch")
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
         const timestamp = Number(BigInt(epochData.timestamp) / BigInt(1e9))
         return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
     })
+    console.log("Delegators by epoch in period amount", delegatorsByEpochFiltered.length)
     for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
         if(isDryRun()) console.log("Getting data for epochId", epochId)
         for(const contractId of contractIdArray) {
+            console.log("Getting delegators for contract", contractId, "and epoch", epochId)
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
-            
+            console.log("Delegators for contract", contractId, "and epoch", epochId, "amount", delegators.length)
             let liquidStakingAmount = 0
             let nonLiquidStakingAmount = 0
             for(const delegator of delegators) {

@@ -27,18 +27,17 @@ export async function getDelegatorsByEpoch(): Promise<DelegatorsByEpochResponse[
         console.error("API_KEY not found")
         return []
     }
-    const response = await fetch(path.join(BASE_URL, "validators/delegators-by-epoch"), {
-        headers: {
-            accept: "application/json",
-            "x-api-key": API_KEY
-        }
-    })
     try {
+        const response = await fetch(path.join(BASE_URL, "validators/delegators-by-epoch"), {
+            headers: {
+                accept: "application/json",
+                "x-api-key": API_KEY
+            }
+        })
         let result = await response.json()
         return result
     } catch(err) {
         console.error(err.message, err.stack)
-        console.error(response)
         throw err
     }
 }
