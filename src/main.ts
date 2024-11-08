@@ -20,6 +20,8 @@ import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
 import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getENOsContracts } from "./ENOs/delegators";
+import { FolderData, MetaPipelineContract } from "./contracts/meta-pipeline";
+import { getCredentials } from "./util/near";
 
 
 type ByContractAndRoundInfoType = {
@@ -547,6 +549,46 @@ export async function updateDbPg(dbRows: VotersRow[], byContractRows: VotersByCo
     }
 }
 
+async function ensureLockVoteContract() {
+    try {
+        let mpDaoVote = new MpDaoVoteContract(MPDAO_VOTE_CONTRACT_ID)
+        const nowMs = Date.now()
+        const lockInVoteFilters = await mpDaoVote.get_lock_in_vote_filters()
+        if(lockInVoteFilters.lock_votes_in_end_timestamp_ms > nowMs) {
+            console.log("Vote filters already set")
+            return
+        }
+
+        const metaPipelineContract = new MetaPipelineContract(META_PIPELINE_CONTRACT_ID)
+        const foldersDataArray: FolderData[] = await metaPipelineContract.getFolders()
+        const pastThresholdMs = 2 * 24 * 60 * 60 * 1000 // 2 days in milliseconds
+        const futureThresholdMs = 20 * 24 * 60 * 60 * 1000 // 20 days in milliseconds
+        for (let i = 0; i < foldersDataArray.length; i++) {
+            const folderData = foldersDataArray[i]
+            const endVoteTimestampMs = folderData.end_vote_timestamp * 1000
+            if(nowMs > endVoteTimestampMs - pastThresholdMs && endVoteTimestampMs + futureThresholdMs > nowMs) {
+                console.log("Setting vote filters for folder id", folderData.folder_id, "grants #", folderData.folder_id+1)
+                console.log("With params", endVoteTimestampMs + futureThresholdMs, folderData.folder_id + 1, 'initiatives')
+                await mpDaoVote.set_lock_in_vote_filters(
+                    endVoteTimestampMs + futureThresholdMs,
+                    folderData.folder_id + 1,
+                    'initiatives'
+                )
+            }
+        }
+    } catch (err) {
+        console.error(err)
+    }
+    // Check it hasn't been set already (endTime is in the past)
+    // Get folders data
+    // Check if a folder is within the last 48 hours
+    // Call meta-vote.set_lock_in_vote_filters({
+    //     end_timestamp_ms: u64, = folder.endTimestamp + 20 days
+    //     votable_numeric_id: u16, = folder.id || folder.id+1
+    //     votable_address: Option<String>, = 'initiatives'
+    // })
+}
+
 async function prepareDB(client: sq3.CommonSQLClient) {
 
     await client.query(CREATE_TABLE_APP_DEB_VERSION);
@@ -798,6 +840,8 @@ async function mainAsyncProcess() {
         await updateDbSqLite(dbRows, dbRows2, availableClaimsRows)
         // update remote pgDB
         await updateDbPg(dbRows, dbRows2, availableClaimsRows)
+
+        await ensureLockVoteContract()
     } catch (err) {
         console.error(err)
     }
