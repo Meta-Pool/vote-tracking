@@ -805,10 +805,7 @@ async function mainAsyncProcess() {
     // see if we need to register closing voting-rounds for grants
     // from day 1 to day 7 of each month
     try {
-        let dayOfTheMonth = new Date().getDate()
-        if (dayOfTheMonth >= 22 || dayOfTheMonth <= 7) {
-            await setRecentlyFreezedFoldersVotes()
-        }
+        await setRecentlyFreezedFoldersVotes()
     } catch (err) {
         console.error(err)
     }

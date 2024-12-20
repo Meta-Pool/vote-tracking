@@ -88,6 +88,7 @@ export async function setRecentlyFreezedFoldersVotes() {
     let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
 
     // select all the non-updated yet (votes==0)
+    // We assume every project will have at least 1 vote. We do it ourselves if needed
     const projectsToUpdate: ProjectMetadataJson[] = validatedProjectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.votes === "0"
     })
