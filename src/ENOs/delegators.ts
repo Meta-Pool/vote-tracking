@@ -14,7 +14,6 @@ const contracts = [
     "pairpoint.poolv1.near",
     "deutschetelekom.poolv1.near",
     "nttdata_dti.poolv1.near",
-    "centurion.poolv1.near",
     "nansen.poolv1.near",
 ]
 /* cSpell:enable */
