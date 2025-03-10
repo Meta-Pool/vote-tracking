@@ -15,6 +15,16 @@ const contracts = [
     "deutschetelekom.poolv1.near",
     "nttdata_dti.poolv1.near",
     "nansen.poolv1.near",
+    "citadelone.poolv1.near",
+    "chainbase.poolv1.near",
+    "simplystaking.poolv1.near",
+    "cryptocrew.poolv1.near",
+    "crosnest.poolv1.near",
+    "validblocks.poolv1.near",
+    "dragonstake.poolv1.near",
+    "caliber.poolv1.near",
+    "originstake.poolv1.near",
+    "stcbahrain.poolv1.near",
 ]
 /* cSpell:enable */
 
@@ -34,7 +44,7 @@ export function getENOsContracts() {
  * @returns 
  */
 export async function generateDelegatorTableDataSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENO[]> {
-    if(isDryRun()) console.log("Getting ENOs liquidity data from", startUnixTimestamp, "to", endUnixTimestamp)
+    if (isDryRun()) console.log("Getting ENOs liquidity data from", startUnixTimestamp, "to", endUnixTimestamp)
     const output = [] as ENO[]
     console.log("Getting delegators by epoch")
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
@@ -43,17 +53,17 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
         return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
     })
     console.log("Delegators by epoch in period amount", delegatorsByEpochFiltered.length)
-    for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
+    for (const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
-        if(isDryRun()) console.log("Getting data for epochId", epochId)
-        for(const contractId of contractIdArray) {
+        if (isDryRun()) console.log("Getting data for epochId", epochId)
+        for (const contractId of contractIdArray) {
             console.log("Getting delegators for contract", contractId, "and epoch", epochId)
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             console.log("Delegators for contract", contractId, "and epoch", epochId, "amount", delegators.length)
             let liquidStakingAmount = 0
             let nonLiquidStakingAmount = 0
-            for(const delegator of delegators) {
-                if(liquidStakingAccounts.includes(delegator.account_id)) {
+            for (const delegator of delegators) {
+                if (liquidStakingAccounts.includes(delegator.account_id)) {
                     liquidStakingAmount += Number(delegator.staked_amount)
                 } else {
                     nonLiquidStakingAmount += Number(delegator.staked_amount)
@@ -79,31 +89,31 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
  * @returns 
  */
 export async function generateTableDataByDelegatorSince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts): Promise<ENODelegator[]> {
-    if(isDryRun()) console.log("Getting ENOs liquidity data by delegator from", startUnixTimestamp, "to", endUnixTimestamp)
+    if (isDryRun()) console.log("Getting ENOs liquidity data by delegator from", startUnixTimestamp, "to", endUnixTimestamp)
     const output = [] as ENODelegator[]
     const delegatorsByEpochResponse = await getDelegatorsByEpoch()
     const delegatorsByEpochFiltered = delegatorsByEpochResponse.filter((epochData: DelegatorsByEpochResponse) => {
         const timestamp = Number(BigInt(epochData.timestamp) / BigInt(1e9))
         return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
     })
-    for(const delegatorsByEpoch of delegatorsByEpochFiltered) {
+    for (const delegatorsByEpoch of delegatorsByEpochFiltered) {
         const epochId = delegatorsByEpoch.epoch_id
-        if(isDryRun()) console.log("Getting data for epochId", epochId)
-        for(const contractId of contractIdArray) {
+        if (isDryRun()) console.log("Getting data for epochId", epochId)
+        for (const contractId of contractIdArray) {
             const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
             const delegatorsData: Record<string, number> = {}
-            for(const delegator of delegators) {
+            for (const delegator of delegators) {
                 const stakedNumber = Number(delegator.staked_amount)
-                if(stakedNumber > 100000) {
+                if (stakedNumber > 100000) {
                     delegatorsData[delegator.account_id] = stakedNumber
                 } else {
-                    if(!delegatorsData.hasOwnProperty("minor_delegators_sum")) {
+                    if (!delegatorsData.hasOwnProperty("minor_delegators_sum")) {
                         delegatorsData["minor_delegators_sum"] = 0
                     }
                     delegatorsData["minor_delegators_sum"] += stakedNumber
                 }
             }
-            for(const [delegatorAccountId, stake] of Object.entries(delegatorsData)) {
+            for (const [delegatorAccountId, stake] of Object.entries(delegatorsData)) {
                 output.push({
                     unix_timestamp: Number(BigInt(delegatorsByEpoch.timestamp) / BigInt(1e9)), // Convert from nano to seconds
                     epoch_id: epochId,
