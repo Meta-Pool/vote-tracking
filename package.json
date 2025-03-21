@@ -15,12 +15,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^12.20.55",
     "near-api-lite": "github:Narwallets/near-api-lite",
     "pg": "^8.11.1",
     "sqlite3": "^5.1.6"
   },
   "devDependencies": {
+    "@types/node": "^12.20.55",
     "@types/pg": "^8.10.2",
     "typescript": "^5.1.6"
   }
