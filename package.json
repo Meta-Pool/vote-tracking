@@ -10,7 +10,8 @@
     "test-migrate-lp-vp": "npm run build && node dist/main.js test migrate-lp-vp",
     "test-migrate-aud": "npm run build && node dist/main.js test migrate-aud",
     "migrate": "npm run build && node dist/main.js migrate",
-    "start": "npm run build && echo 'check scripts/every-hour.sh, include it in crontab'"
+    "start": "npm run build && echo 'check scripts/every-hour.sh, include it in crontab'",
+    "save-voters":"npm run build && node dist/main.js dry save-voters"
   },
   "author": "",
   "license": "ISC",

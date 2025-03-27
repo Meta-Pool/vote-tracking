@@ -4,7 +4,7 @@ import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
 import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_ENO_BY_DELEGATOR, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, ENODelegator, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
-import * as sq3 from './util/sq3'
+import * as sq3 from './util/sq3';
 import { Database as SqLiteDatabase } from "sqlite3";
 
 
@@ -15,11 +15,12 @@ import { getPgConfig } from "./util/postgres";
 import { consoleShowVotesFor } from "./votesFor";
 import { isoTruncDate, toNumber } from "./util/convert";
 import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
-import { getContracts, showMigrated } from "./migration/show-migrated";
+import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
 import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getENOsContracts } from "./ENOs/delegators";
+import { saveVoteSnapshotIntoSqliteDb } from "./migration/saveVoteSnapshotIntoSqliteDb";
 
 
 type ByContractAndRoundInfoType = {
@@ -712,6 +713,12 @@ async function analyzeSingleFile(filePath: string) {
 
 async function mainAsyncProcess() {
 
+    if (argv.findIndex(i => i == "save-voters") > 0) {
+        console.log("saving voters snapshot into sqlite db")
+        await saveVoteSnapshotIntoSqliteDb()
+        process.exit(0)
+    }
+
     const fileArgvIndex = argv.findIndex(i => i == "file")
     if (fileArgvIndex > 0) {
         // process single file: node dist/main.js file xxxx.json
@@ -760,14 +767,15 @@ async function mainAsyncProcess() {
         if (isDryRun()) console.log("All voters", allVoters.length)
         if (argv.findIndex(i => i == "show-voters") > 0) {
             console.log(JSON.stringify(allVoters, undefined, 4))
-            return
+            process.exit(0)
         }
         const computeAsDateInx = argv.findIndex(i => i == "compute-as-date")
         if (computeAsDateInx > 0) {
             await computeAsDate(argv[computeAsDateInx + 1], allVoters)
-            return
+            process.exit(0)
         }
-        // backup all voters snapshot (one per hour)
+
+        // --------- backup all voters snapshot (one per hour) ----------
         // TODO: remove old backups
         {
             const dateIsoFile = new Date().toISOString().replace(/:/g, "-")
@@ -803,7 +811,6 @@ async function mainAsyncProcess() {
     }
 
     // see if we need to register closing voting-rounds for grants
-    // from day 1 to day 7 of each month
     try {
         await setRecentlyFreezedFoldersVotes()
     } catch (err) {
