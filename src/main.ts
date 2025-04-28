@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
-import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_ENO_BY_DELEGATOR, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, ENODelegator, VotersByContractAndRound, VotersRow } from "./util/tables";
+import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_ENO_BY_DELEGATOR, CREATE_TABLE_VALIDATOR_STAKE_HISTORY, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, ENODelegator, ValidatorStakeHistory, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
 import * as sq3 from './util/sq3';
 import { Database as SqLiteDatabase } from "sqlite3";
@@ -19,7 +19,7 @@ import { showMigrated } from "./migration/show-migrated";
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
 import { homedir } from "os";
-import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getENOsContracts } from "./ENOs/delegators";
+import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getValidatorArrayStakeHistorySince, getENOsContracts } from "./ENOs/delegators";
 import { saveVoteSnapshotIntoSqliteDb } from "./migration/saveVoteSnapshotIntoSqliteDb";
 
 
@@ -61,6 +61,7 @@ type MetaVoteMetricsType = {
 type EnoPersistentData = {
     lastRecordedTimestamp: number
     lastRecordedTimestampByDelegator: number
+    lastRecordedStakeHistory: number
 }
 
 export async function processMpDaoVote(allVoters: VoterInfo[], decimals = 6, dateString: string | undefined = undefined):
@@ -373,6 +374,13 @@ async function pgInsertENOsByDelegatorsData(
     await pgInsertOnConflict(client, "eno_by_delegator", dbRows)
 }
 
+async function pgInsertValidatorEpochHistory(
+    client: Client,
+    dbRows: ValidatorStakeHistory[]
+) {
+    await pgInsertOnConflict(client, "validator_stake_history", dbRows)
+}
+
 // async function pgInsertVotersHighWaterMark(
 //     client: Client,
 //     dbRows: VotersRow[]
@@ -454,8 +462,7 @@ async function insertENOsData(dbRows: ENO[]) {
         // Connect & create tables if not exist
         await client.connect();
         await prepareDB(client)
-        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
-        // so we store the high-water mark for the voter/day
+
         await pgInsertENOsData(client, dbRows);
         console.log(client.database, "pg insert ENOs", dbRows.length, "rows")
 
@@ -490,9 +497,43 @@ async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
         // Connect & create tables if not exist
         await client.connect();
         await prepareDB(client)
-        // insert/update the rows for this day, ONLY IF vp_in_use is higher than the existing value
-        // so we store the high-water mark for the voter/day
+
         await pgInsertENOsByDelegatorsData(client, dbRows);
+        console.log(client.database, "pg insert ENOs by delegators", dbRows.length, "rows")
+
+        console.log("ENOs pg db inserted successfully")
+        return true
+    } catch (err) {
+        console.error("Error inserting ENOs pg db", err.message, err.stack)
+        return false
+    } finally {
+        if (client) {
+            await client.end()
+        }
+    }
+}
+
+async function insertValidatorEpochHistory(dbRows: ValidatorStakeHistory[]) {
+    console.log("Inserting ENOs pg db")
+    const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
+    const client = new Client({
+        host: config.host,
+        user: config.userName,
+        password: config.password,
+        database: useTestnet ? "near_testnet" : "near_mainnet",
+        port: config.port,
+        // ssl: {
+        //     rejectUnauthorized: false,
+        //     ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
+        // },
+    });
+    try {
+        console.log("db:", client.database)
+        // Connect & create tables if not exist
+        await client.connect();
+        await prepareDB(client)
+
+        await pgInsertValidatorEpochHistory(client, dbRows);
         console.log(client.database, "pg insert ENOs by delegators", dbRows.length, "rows")
 
         console.log("ENOs pg db inserted successfully")
@@ -588,8 +629,15 @@ async function prepareDB(client: sq3.CommonSQLClient) {
         await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
         console.log("DB tables UPDATED to version:", version)
     }
-    // if (version == 4) {
-    //     // upgrade to version 5
+    if (version == 4) {
+        // upgrade to version 5
+        await client.query(CREATE_TABLE_VALIDATOR_STAKE_HISTORY)
+        version += 1
+        await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
+        console.log("DB tables UPDATED to version:", version)
+    }
+    // if (version == 5) {
+    //     // upgrade to version 6
     //     await client.query("ALTER TABLE voters add column xxxx DOUBLE PRECISION")
     //     version += 1
     //     await client.query(`update app_db_version set version=${version}, date_updated='${isoTruncDate()}' where app_code='${APP_CODE}'`);
@@ -643,7 +691,48 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
     }
 }
 
-async function getENOsDataAndInsertIt(contract?: string) {
+async function insertValidatorsStakeHistory(contractId?: string) {
+    const enosDir = 'ENOs'
+    const enosFileName = "enosPersistent.json"
+    if (!existsSync(enosDir)) {
+        mkdirSync(enosDir)
+    }
+    const enosFullPath = join(enosDir, enosFileName)
+
+    let startUnixTimestamp = 1698807600 /*2023/11/01*/
+    const THREE_MONTH_IN_SECONDS = 3 * 30 * 24 * 60 * 60
+    let endUnixTimestamp = startUnixTimestamp + THREE_MONTH_IN_SECONDS
+    let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
+    if (existsSync(enosFullPath)) {
+        enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+        if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
+            startUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
+        }
+        if (contractId) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
+            endUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
+
+        } else {
+            endUnixTimestamp = Math.min(startUnixTimestamp + THREE_MONTH_IN_SECONDS, Date.now())
+        }
+    }
+    console.log("Inserting from", startUnixTimestamp, "to", endUnixTimestamp)
+    const contracts = contractId !== undefined ? [contractId] : getENOsContracts()
+    const data = await getValidatorArrayStakeHistorySince(startUnixTimestamp, endUnixTimestamp, contracts)
+    console.log("Inserting", data.length, "rows")
+    if (data.length > 0) {
+        const isSuccess = await insertValidatorEpochHistory(data)
+        console.log("Is success", isSuccess)
+        if (isSuccess && !contractId) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
+            const maxTimestamp = data.reduce((max: number, curr: ValidatorStakeHistory) => {
+                return Math.max(max, Number(curr.unix_timestamp))
+            }, startUnixTimestamp)
+            writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedStakeHistory: maxTimestamp }))
+            enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+        }
+    }
+}
+
+async function getENOsStakeDataAndInsertIt(contract?: string) {
     const enosDir = 'ENOs'
     const enosFileName = "enosPersistent.json"
     if (!existsSync(enosDir)) {
@@ -746,7 +835,18 @@ async function mainAsyncProcess() {
         const nextArg = argv[addEnosContractInx + 1]
         const contract = getENOsContracts().includes(nextArg) ? nextArg : undefined
         console.log("Adding all data from validator:", contract || "all validators")
-        await getENOsDataAndInsertIt(contract)
+        await getENOsStakeDataAndInsertIt(contract)
+        const end = Date.now()
+        console.log("Elapsed time", (end - start) / (1000 * 60), "minutes")
+        return
+    }
+    const addStakeHistoryInx = argv.findIndex(i => i == "add-stake-history")
+    if (addStakeHistoryInx > 0) {
+        const start = Date.now()
+        const nextArg = argv[addStakeHistoryInx + 1]
+        const contract = getENOsContracts().includes(nextArg) ? nextArg : undefined
+        console.log("Adding stake history from validator:", contract || "all validators")
+        await insertValidatorsStakeHistory(contract)
         const end = Date.now()
         console.log("Elapsed time", (end - start) / (1000 * 60), "minutes")
         return
@@ -818,7 +918,13 @@ async function mainAsyncProcess() {
     }
 
     try {
-        await getENOsDataAndInsertIt()
+        await getENOsStakeDataAndInsertIt()
+    } catch (err) {
+        console.error(err)
+    }
+
+    try {
+        await insertValidatorsStakeHistory()
     } catch (err) {
         console.error(err)
     }

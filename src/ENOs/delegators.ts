@@ -1,7 +1,7 @@
 import { isDryRun } from "../contracts/base-smart-contract";
-import { ENO, ENODelegator } from "../util/tables";
+import { ENO, ENODelegator, ValidatorStakeHistory } from "../util/tables";
 import { sleep } from "../util/util";
-import { DelegatorsByEpochResponse, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch } from "./api";
+import { DelegatorsByEpochResponse, getDelegatorEpochHistory, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch, PikespeakValidatorEpochHistory } from "./pikespeakApi";
 
 /* cSpell:disable */
 const contracts = [
@@ -124,6 +124,47 @@ export async function generateTableDataByDelegatorSince(startUnixTimestamp: numb
             }
             await sleep(75)
         }
+    }
+    return output
+}
+
+async function getValidatorStakeHistorySince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractId: string) {
+    const validatorByEpochResponse = await getDelegatorEpochHistory(contractId)
+    const validatorByEpochFilteredAndMapped: ValidatorStakeHistory[] = validatorByEpochResponse.filter((epochData: PikespeakValidatorEpochHistory) => {
+        const timestamp = Number(BigInt(epochData.timestamp) / BigInt(1e9))
+        return endUnixTimestamp > timestamp && timestamp > startUnixTimestamp
+    }).map((v: PikespeakValidatorEpochHistory, index: number, arr: PikespeakValidatorEpochHistory[]) => {
+        let projectedApyBp = 0
+        if (index > 0) {
+            const previousEpoch = arr[index - 1]
+            const previousTimestamp = Number(BigInt(previousEpoch.timestamp) / BigInt(1e9))
+            const currentTimestamp = Number(BigInt(v.timestamp) / BigInt(1e9))
+            const secondsDelta = (currentTimestamp - previousTimestamp)
+            const periods = 365 * 24 * 60 * 60 / secondsDelta
+            console.log(Number(v.total_staked_balance), Number(v.reward_amount), periods)
+            const base = (Number(v.total_staked_balance) + Number(v.reward_amount)) / Number(v.total_staked_balance)
+            const projectedApy = ((base) ** periods - 1) * 100
+            console.log("Projected", projectedApy)
+            projectedApyBp = Math.floor(projectedApy * 100)
+        }
+        return {
+            unix_timestamp: Number(BigInt(v.timestamp) / BigInt(1e9)), // Convert from nano to seconds
+            epoch_id: v.epoch_id,
+            pool_id: contractId,
+            stake: Number(v.total_staked_balance),
+            reward_amount: Number(v.reward_amount),
+            projected_apy_bp: projectedApyBp,
+        }
+    })
+
+    return validatorByEpochFilteredAndMapped
+}
+
+export async function getValidatorArrayStakeHistorySince(startUnixTimestamp: number = 1698807600 /*2023/11/01*/, endUnixTimestamp: number = Date.now(), contractIdArray: string[] = contracts) {
+    const output = [] as ValidatorStakeHistory[]
+    for (const contractId of contractIdArray) {
+        const validatorByEpochFilteredAndMapped = await getValidatorStakeHistorySince(startUnixTimestamp, endUnixTimestamp, contractId)
+        output.push(...validatorByEpochFilteredAndMapped)
     }
     return output
 }

@@ -105,6 +105,15 @@ export interface ENODelegator {
   stake: number
 }
 
+export interface ValidatorStakeHistory {
+  unix_timestamp: number
+  epoch_id: string
+  pool_id: string
+  stake: number
+  reward_amount: number
+  projected_apy_bp: number
+}
+
 export const CREATE_TABLE_ENO_BY_DELEGATOR = `
 CREATE TABLE IF NOT EXISTS eno_by_delegator (
   unix_timestamp INTEGER,
@@ -113,4 +122,15 @@ CREATE TABLE IF NOT EXISTS eno_by_delegator (
   account_id TEXT,
   stake DOUBLE PRECISION,
   PRIMARY KEY (unix_timestamp, epoch_id, pool_id, account_id)
+)`;
+
+export const CREATE_TABLE_VALIDATOR_STAKE_HISTORY = `
+CREATE TABLE IF NOT EXISTS validator_stake_history (
+  unix_timestamp INTEGER,
+  epoch_id TEXT,
+  pool_id TEXT,
+  stake DOUBLE PRECISION,
+  reward_amount DOUBLE PRECISION,
+  projected_apy_bp INTEGER,
+  PRIMARY KEY (unix_timestamp, epoch_id, pool_id)
 )`;
