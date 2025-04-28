@@ -164,6 +164,7 @@ export async function getValidatorArrayStakeHistorySince(startUnixTimestamp: num
     const output = [] as ValidatorStakeHistory[]
     for (const contractId of contractIdArray) {
         const validatorByEpochFilteredAndMapped = await getValidatorStakeHistorySince(startUnixTimestamp, endUnixTimestamp, contractId)
+        await sleep(1000)
         output.push(...validatorByEpochFilteredAndMapped)
     }
     return output
