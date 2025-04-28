@@ -522,10 +522,10 @@ async function insertValidatorEpochHistory(dbRows: ValidatorStakeHistory[]) {
         password: config.password,
         database: useTestnet ? "near_testnet" : "near_mainnet",
         port: config.port,
-        // ssl: {
-        //     rejectUnauthorized: false,
-        //     ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
-        // },
+        ssl: {
+            rejectUnauthorized: false,
+            ca: readFileSync(join(".", "certificate", "ca-certificate.crt")).toString(),
+        },
     });
     try {
         console.log("db:", client.database)
