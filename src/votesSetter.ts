@@ -52,37 +52,37 @@ export async function setRecentlyFreezedFoldersVotes() {
         return folder.freeze_unix_timestamp <= nowInSeconds && folder.end_vote_timestamp <= nowInSeconds
     })
 
-    
+
     // get the folder with max end_vote_timestamp
     const folderToUpdate = voteCompletedFolders.reduce((latestFinishedFolder: FolderData, curr: FolderData) => {
-        if (curr.end_vote_timestamp > latestFinishedFolder.end_vote_timestamp) {
+        if (curr.end_vote_timestamp >= latestFinishedFolder.end_vote_timestamp) {
             return curr
         } else {
             return latestFinishedFolder
         }
     }, voteCompletedFolders[0])
-    
+
     console.log("folder to update", folderToUpdate)
-    
+
     // get all project meta-data in the folder
     const projectsMetadata: ProjectMetadataJson[] = await metaPipelineContract.getProjectsInFolder(folderToUpdate.folder_id)
     // filter only validated projects
     const validatedProjectsMetadata: ProjectMetadataJson[] = projectsMetadata.filter((project: ProjectMetadataJson) => {
         return project.is_validated
     })
-    
+
     // TEST -- erase snapshot commands
     if (process.argv.includes("remove-calls")) {
         for (let project of validatedProjectsMetadata) {
-                try {
-                    await metaPipelineContract.setVotes(project.id, "0", 0)
-                } catch (ex) {
-                    console.error(ex)
-                }
-                await sleep(3000)
+            try {
+                await metaPipelineContract.setVotes(project.id, "0", 0)
+            } catch (ex) {
+                console.error(ex)
+            }
+            await sleep(3000)
         }
     }
-    
+
     if (voteCompletedFolders.length === 0) return
     // get first snapshot after votes closed
     let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
