@@ -3,8 +3,7 @@ import { ENO, ENODelegator, ValidatorStakeHistory } from "../util/tables";
 import { sleep } from "../util/util";
 import { DelegatorsByEpochResponse, getDelegatorEpochHistory, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch, PikespeakValidatorEpochHistory } from "./pikespeakApi";
 
-/* cSpell:disable */
-const contracts = [
+const enosContracts = [
     "everstake.poolv1.near",
     "luganodes.pool.near",
     "dacmpool.poolv1.near",
@@ -15,6 +14,9 @@ const contracts = [
     "deutschetelekom.poolv1.near",
     "nttdata_dti.poolv1.near",
     "nansen.poolv1.near",
+]
+
+const pnosContracts = [
     "citadelone.poolv1.near",
     "chainbase.poolv1.near",
     "simplystaking.poolv1.near",
@@ -26,6 +28,56 @@ const contracts = [
     "originstake.poolv1.near",
     "stcbahrain.poolv1.near",
 ]
+
+const stakeWars3Contracts = [
+    "rockxv2.poolv1.near",
+    "swissstar.poolv1.near",
+    "stingray.poolv1.near",
+    "spectrum.poolv1.near",
+    "shurik.poolv1.near",
+    "jilina.poolv1.near",
+    "sazhiv.poolv1.near",
+    "ruziev.poolv1.near",
+    "p2pstaking.poolv1.near",
+    "ignor.poolv1.near",
+    "idtcn4.poolv1.near",
+    "gateomega.poolv1.near",
+    "davaymne.poolv1.near",
+    "blntmain.poolv1.near",
+    "beobeo.poolv1.near",
+    "annanow.poolv1.near",
+    "abahmane.poolv1.near",
+    "nearuaguild.poolv1.near",
+    "minion.poolv1.near",
+    "solidstate.poolv1.near",
+    "apm.poolv1.near",
+    "wackazong.poolv1.near",
+    "upgold.poolv1.near",
+    "trdm.poolv1.near",
+    "neardevvn.poolv1.near",
+    "n_shoko.poolv1.near",
+    "interstakeone.poolv1.near",
+    "ibsblock.poolv1.near",
+    "iamoskvin.poolv1.near",
+    "gritsly.poolv1.near",
+    "encipher.poolv1.near",
+    "nodeverse_2.poolv1.near",
+    "mexa-staking.poolv1.near",
+    "2pilot.poolv1.near",
+    "iamcryptobro.poolv1.near",
+    "shardlabs.poolv1.near",
+    "readylayerone_staking.poolv1.near",
+    "nearkoreahub.poolv1.near",
+    "hapi.poolv1.near",
+    "owa.poolv1.near",
+]
+
+/* cSpell:disable */
+const contracts = [
+    ...enosContracts,
+    ...pnosContracts,
+    ...stakeWars3Contracts,    
+]
 /* cSpell:enable */
 
 const liquidStakingAccounts = [
@@ -35,6 +87,17 @@ const liquidStakingAccounts = [
 
 export function getENOsContracts() {
     return contracts
+}
+
+export function getDelegatorGroupContracts(delegatorGroup: string) {
+    switch(delegatorGroup) {
+        case "eno":
+            return enosContracts
+        case "pno": 
+            return pnosContracts
+        case "stakeWars3":
+            return stakeWars3Contracts
+    }
 }
 
 /**
