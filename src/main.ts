@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmdirSync, writeFileSync } from "fs";
 import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
@@ -770,6 +770,9 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
 
     const contractsToAdd = contracts || getENOsContracts()
     const data = await generateDelegatorTableDataSince(startUnixTimestamp, endUnixTimestamp, contractsToAdd)
+    const now = Date.now()
+    const delegatorTableFileName = `temp_delegators_table_data_${now}.json`
+    writeFileSync(delegatorTableFileName, JSON.stringify(data))
     if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
         if (isSuccess && !contracts) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
@@ -778,10 +781,13 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
             }, startUnixTimestamp)
             writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestamp: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+            rmdirSync(delegatorTableFileName)
         }
     }
 
     const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator, endUnixTimestampByDelegator, contractsToAdd)
+    const dataByDelegatorFileName = `temp_data_by_delegators_${now}.json`
+    writeFileSync(dataByDelegatorFileName, JSON.stringify(dataByDelegator))
     if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
         if (isSuccess && !contracts) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
@@ -790,6 +796,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
             }, startUnixTimestamp)
             writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestampByDelegator: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
+            rmdirSync(dataByDelegatorFileName)
         }
     }
 }
