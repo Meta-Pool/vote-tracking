@@ -479,7 +479,7 @@ async function insertENOsData(dbRows: ENO[]) {
 }
 
 async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
-    console.log("Inserting ENOs pg db")
+    console.log("Inserting ENOs by delegator pg db")
     const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
     const client = new Client({
         host: config.host,
@@ -504,7 +504,7 @@ async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
         console.log("ENOs pg db inserted successfully")
         return true
     } catch (err) {
-        console.error("Error inserting ENOs pg db", err.message, err.stack)
+        console.error("Error inserting ENOs by delegator pg db", err.message, err.stack)
         return false
     } finally {
         if (client) {
@@ -514,7 +514,7 @@ async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
 }
 
 async function insertValidatorEpochHistory(dbRows: ValidatorStakeHistory[]) {
-    console.log("Inserting ENOs pg db")
+    console.log("Inserting ENOs validator epoch history pg db")
     const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
     const client = new Client({
         host: config.host,
@@ -539,7 +539,7 @@ async function insertValidatorEpochHistory(dbRows: ValidatorStakeHistory[]) {
         console.log("ENOs pg db inserted successfully")
         return true
     } catch (err) {
-        console.error("Error inserting ENOs pg db", err.message, err.stack)
+        console.error("Error inserting ENOs validator epoch history pg db", err.message, err.stack)
         return false
     } finally {
         if (client) {
