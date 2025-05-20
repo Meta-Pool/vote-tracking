@@ -1,7 +1,7 @@
 import { isDryRun } from "../contracts/base-smart-contract";
 import { ENO, ENODelegator, ValidatorStakeHistory } from "../util/tables";
 import { sleep } from "../util/util";
-import { DelegatorsByEpochResponse, getDelegatorEpochHistory, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch, PikespeakValidatorEpochHistory } from "./pikespeakApi";
+import { DelegatorsByEpochResponse, getDelegatorEpochHistory, getDelegatorsByEpoch, getDelegatorsForContractAndEpoch, getDelegatorsForContractAndEpochWithRetryOrThrow, PikespeakValidatorEpochHistory } from "./pikespeakApi";
 
 const enosContracts = [
     "everstake.poolv1.near",
@@ -121,7 +121,7 @@ export async function generateDelegatorTableDataSince(startUnixTimestamp: number
         if (isDryRun()) console.log("Getting data for epochId", epochId)
         for (const contractId of contractIdArray) {
             console.log("Getting delegators for contract", contractId, "and epoch", epochId)
-            const delegators = await getDelegatorsForContractAndEpoch(contractId, epochId)
+            const delegators = await getDelegatorsForContractAndEpochWithRetryOrThrow(contractId, epochId)
             console.log("Delegators for contract", contractId, "and epoch", epochId, "amount", delegators.length)
             let liquidStakingAmount = 0
             let nonLiquidStakingAmount = 0

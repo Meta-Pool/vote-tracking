@@ -1,6 +1,7 @@
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
+import { sleep } from '../util/util'
 
 const BASE_URL = "https://api.pikespeak.ai/"
 const API_KEY = getApiKey()
@@ -56,6 +57,19 @@ export async function getDelegatorsByEpoch(): Promise<DelegatorsByEpochResponse[
 
 export async function getDelegatorsForContractAndEpoch(contractId: string, epochId: string) {
     return httpGet(path.join(BASE_URL, "validators/delegators", contractId + "?epoch_id=" + epochId))
+}
+
+export async function getDelegatorsForContractAndEpochWithRetryOrThrow(contractId: string, epochId: string, retries: number = 10) {
+    while(retries > 0) {
+        retries--
+        try {
+            return await getDelegatorsForContractAndEpoch(contractId, epochId) // await is necessary since promise won't return error by default
+        } catch(err) {
+            console.error("Error getting data for contract", contractId, "and epochId", epochId)
+            await sleep(1000) // The common error is too many requests, so we 
+        }
+    }
+    throw new Error(`Unable to retrieve data from contract ${contractId} and epoch ${epochId}`)
 }
 
 export async function getDelegatorEpochHistory(contractId: string) {

@@ -771,7 +771,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     const contractsToAdd = contracts || getENOsContracts()
     const data = await generateDelegatorTableDataSince(startUnixTimestamp, endUnixTimestamp, contractsToAdd)
     const now = Date.now()
-    const delegatorTableFileName = `temp_delegators_table_data_${now}.json`
+    const delegatorTableFileName = `ENOs/temp_delegators_table_data_${now}.json`
     writeFileSync(delegatorTableFileName, JSON.stringify(data))
     if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
@@ -786,7 +786,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
 
     const dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestampByDelegator, endUnixTimestampByDelegator, contractsToAdd)
-    const dataByDelegatorFileName = `temp_data_by_delegators_${now}.json`
+    const dataByDelegatorFileName = `ENOs/temp_data_by_delegators_${now}.json`
     writeFileSync(dataByDelegatorFileName, JSON.stringify(dataByDelegator))
     if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
