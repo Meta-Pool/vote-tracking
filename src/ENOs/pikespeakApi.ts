@@ -59,17 +59,21 @@ export async function getDelegatorsForContractAndEpoch(contractId: string, epoch
     return httpGet(path.join(BASE_URL, "validators/delegators", contractId + "?epoch_id=" + epochId))
 }
 
-export async function getDelegatorsForContractAndEpochWithRetryOrThrow(contractId: string, epochId: string, retries: number = 10) {
+async function getDataWithRetryOrThrow(fn: Function, retries: number = 10) {
     while(retries > 0) {
         retries--
         try {
-            return await getDelegatorsForContractAndEpoch(contractId, epochId) // await is necessary since promise won't return error by default
+            return await fn() // await is necessary since promise won't return error by default
         } catch(err) {
-            console.error("Error getting data for contract", contractId, "and epochId", epochId)
+            console.error("Error getting data for function", fn.name)
             await sleep(1000) // The common error is too many requests, so we 
         }
     }
-    throw new Error(`Unable to retrieve data from contract ${contractId} and epoch ${epochId}`)
+    throw new Error(`Unable to retrieve data`)
+}
+
+export async function getDelegatorsForContractAndEpochWithRetryOrThrow(contractId: string, epochId: string, retries: number = 10) {
+    return await getDataWithRetryOrThrow(getDelegatorsForContractAndEpoch.bind(null, contractId, epochId), retries)
 }
 
 export async function getDelegatorEpochHistory(contractId: string) {
