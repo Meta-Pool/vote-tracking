@@ -891,9 +891,13 @@ async function mainAsyncProcess() {
     const addStakeHistoryGroupInx = argv.findIndex(i => i == "add-stake-history-group")
     if (addStakeHistoryGroupInx > 0) {
         const start = Date.now()
-        const nextArg = argv[addStakeHistoryInx + 1]
-        const lastTimestamp = argv[addStakeHistoryInx + 2] ? Number(argv[addStakeHistoryInx + 2]) : undefined
-        const contracts = getDelegatorGroupContracts(nextArg)
+        const delegatorGroup = argv[addStakeHistoryGroupInx + 1]
+        const lastTimestamp = argv[addStakeHistoryGroupInx + 2] ? Number(argv[addStakeHistoryGroupInx + 2]) : undefined
+        const contracts = getDelegatorGroupContracts(delegatorGroup)
+        if(!contracts) {
+            console.error("No contracts found for group", delegatorGroup)
+            return
+        }
         console.log("Adding stake history from validator:", contracts)
         await insertValidatorsStakeHistory(contracts, lastTimestamp)
         const end = Date.now()
