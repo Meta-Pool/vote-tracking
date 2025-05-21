@@ -691,7 +691,7 @@ export async function updateDbSqLite(dbRows: VotersRow[], byContractRows: Voters
     }
 }
 
-async function insertValidatorsStakeHistory(contractId?: string) {
+async function insertValidatorsStakeHistory(contractIds?: string[], lastTimestamp?: number) {
     const enosDir = 'ENOs'
     const enosFileName = "enosPersistent.json"
     if (!existsSync(enosDir)) {
@@ -708,7 +708,9 @@ async function insertValidatorsStakeHistory(contractId?: string) {
         if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
             startUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
         }
-        if (contractId) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
+        if(lastTimestamp) {
+            endUnixTimestamp = lastTimestamp
+        } else if (contractIds) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
             endUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
 
         } else {
@@ -716,13 +718,13 @@ async function insertValidatorsStakeHistory(contractId?: string) {
         }
     }
     console.log("Inserting from", startUnixTimestamp, "to", endUnixTimestamp)
-    const contracts = contractId !== undefined ? [contractId] : getENOsContracts()
+    const contracts = contractIds !== undefined ? contractIds : getENOsContracts()
     const data = await getValidatorArrayStakeHistorySince(startUnixTimestamp, endUnixTimestamp, contracts)
     console.log("Inserting", data.length, "rows")
     if (data.length > 0) {
         const isSuccess = await insertValidatorEpochHistory(data)
         console.log("Is success", isSuccess)
-        if (isSuccess && !contractId) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
+        if (isSuccess && !contractIds) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = data.reduce((max: number, curr: ValidatorStakeHistory) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
@@ -879,9 +881,21 @@ async function mainAsyncProcess() {
     if (addStakeHistoryInx > 0) {
         const start = Date.now()
         const nextArg = argv[addStakeHistoryInx + 1]
-        const contract = getENOsContracts().includes(nextArg) ? nextArg : undefined
-        console.log("Adding stake history from validator:", contract || "all validators")
-        await insertValidatorsStakeHistory(contract)
+        const contractArray = getENOsContracts().includes(nextArg) ? [nextArg] : undefined
+        console.log("Adding stake history from validator:", contractArray || "all validators")
+        await insertValidatorsStakeHistory(contractArray)
+        const end = Date.now()
+        console.log("Elapsed time", (end - start) / (1000 * 60), "minutes")
+        return
+    }
+    const addStakeHistoryGroupInx = argv.findIndex(i => i == "add-stake-history-group")
+    if (addStakeHistoryGroupInx > 0) {
+        const start = Date.now()
+        const nextArg = argv[addStakeHistoryInx + 1]
+        const lastTimestamp = argv[addStakeHistoryInx + 2] ? Number(argv[addStakeHistoryInx + 2]) : undefined
+        const contracts = getDelegatorGroupContracts(nextArg)
+        console.log("Adding stake history from validator:", contracts)
+        await insertValidatorsStakeHistory(contracts, lastTimestamp)
         const end = Date.now()
         console.log("Elapsed time", (end - start) / (1000 * 60), "minutes")
         return
