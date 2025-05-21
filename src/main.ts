@@ -478,7 +478,7 @@ export async function insertENOsData(dbRows: ENO[]) {
     }
 }
 
-async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
+export async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
     console.log("Inserting ENOs by delegator pg db")
     const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
     const client = new Client({
