@@ -31,7 +31,7 @@ async function run() {
     if (enoByDelegatorArgvIndex > 0) {
         // process single file: node dist/main.js file xxxx.json
         const filename = argv[enoByDelegatorArgvIndex + 1]
-        await insertEnosDataFromFile(filename)
+        await insertEnosByDelegatorDataFromFile(filename)
         return
     }
 }
