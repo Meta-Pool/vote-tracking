@@ -443,7 +443,7 @@ async function pgInsertVotersPerContract(
     })
 }
 
-async function insertENOsData(dbRows: ENO[]) {
+export async function insertENOsData(dbRows: ENO[]) {
     console.log("Inserting ENOs pg db")
     const config = getPgConfig(useTestnet ? "testnet" : "mainnet");
     const client = new Client({
@@ -501,7 +501,7 @@ async function insertENOsByDelegatorData(dbRows: ENODelegator[]) {
         await pgInsertENOsByDelegatorsData(client, dbRows);
         console.log(client.database, "pg insert ENOs by delegators", dbRows.length, "rows")
 
-        console.log("ENOs pg db inserted successfully")
+        console.log("ENOs by delegator pg db inserted successfully")
         return true
     } catch (err) {
         console.error("Error inserting ENOs by delegator pg db", err.message, err.stack)
@@ -534,9 +534,9 @@ async function insertValidatorEpochHistory(dbRows: ValidatorStakeHistory[]) {
         await prepareDB(client)
 
         await pgInsertValidatorEpochHistory(client, dbRows);
-        console.log(client.database, "pg insert ENOs by delegators", dbRows.length, "rows")
+        console.log(client.database, "pg insert ENOs validator epoch history", dbRows.length, "rows")
 
-        console.log("ENOs pg db inserted successfully")
+        console.log("ENOs validator epoch history pg db inserted successfully")
         return true
     } catch (err) {
         console.error("Error inserting ENOs validator epoch history pg db", err.message, err.stack)
@@ -779,13 +779,15 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
     if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
+        if(isSuccess) {
+            rmdirSync(delegatorTableFileName)
+        }
         if (isSuccess && !contracts) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = data.reduce((max: number, curr: ENO) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
             writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestamp: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-            rmdirSync(delegatorTableFileName)
         }
     }
 
@@ -794,18 +796,20 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     if(existsSync(dataByDelegatorFileName)) {
         dataByDelegator = JSON.parse(readFileSync(dataByDelegatorFileName, 'utf-8'))
     } else {
-        dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestamp, endUnixTimestamp, contractsToAdd)
+        dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestamp, endUnixTimestampByDelegator, contractsToAdd)
         writeFileSync(dataByDelegatorFileName, JSON.stringify(dataByDelegator))
     }
     if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
+        if(isSuccess) {
+            rmdirSync(dataByDelegatorFileName)
+        }
         if (isSuccess && !contracts) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
                 return Math.max(max, Number(curr.unix_timestamp))
             }, startUnixTimestamp)
             writeFileSync(enosFullPath, JSON.stringify({ ...enosPersistentData, lastRecordedTimestampByDelegator: maxTimestamp }))
             enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-            rmdirSync(dataByDelegatorFileName)
         }
     }
 }
