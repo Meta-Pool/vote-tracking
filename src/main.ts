@@ -705,16 +705,18 @@ async function insertValidatorsStakeHistory(contractIds?: string[], lastTimestam
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
-            startUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
-        }
-        if(lastTimestamp) {
-            endUnixTimestamp = lastTimestamp
-        } else if (contractIds) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
-            endUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
-
+        if(contractIds) {
+            if(lastTimestamp) {
+                endUnixTimestamp = lastTimestamp
+            } else if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
+                endUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
+            } else {
+                endUnixTimestamp = Math.min(startUnixTimestamp + THREE_MONTH_IN_SECONDS, Date.now())
+            }
         } else {
-            endUnixTimestamp = Math.min(startUnixTimestamp + THREE_MONTH_IN_SECONDS, Date.now())
+            if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
+                startUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
+            }
         }
     }
     console.log("Inserting from", startUnixTimestamp, "to", endUnixTimestamp)
