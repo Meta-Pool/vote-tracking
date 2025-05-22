@@ -204,8 +204,9 @@ async function getValidatorStakeHistorySince(startUnixTimestamp: number = 169880
             const currentTimestamp = Number(BigInt(v.timestamp) / BigInt(1e9))
             const secondsDelta = (currentTimestamp - previousTimestamp)
             const periods = 365 * 24 * 60 * 60 / secondsDelta
-            console.log(Number(v.total_staked_balance), Number(v.reward_amount), periods)
-            const base = (Number(v.total_staked_balance) + Number(v.reward_amount)) / Number(v.total_staked_balance)
+            const previousStake = Number(previousEpoch.total_staked_balance)
+            console.log(previousStake, Number(v.reward_amount), periods)
+            const base = (previousStake + Number(v.reward_amount)) / previousStake
             const projectedApy = ((base) ** periods - 1) * 100
             console.log("Projected", projectedApy)
             projectedApyBp = Math.floor(projectedApy * 100)
