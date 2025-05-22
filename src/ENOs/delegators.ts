@@ -45,7 +45,7 @@ const stakeWars3Contracts = [
     'davaymne.poolv1.near',
     'blntmain.poolv1.near',
     'beobeo.poolv1.near',
-    'annanow.poolv1.near',
+    // 'annanow.poolv1.near', commented since it is down since 2024, but me be back up
     'abahmane.poolv1.near',
     'nearuaguild.poolv1.near',
     'minion.poolv1.near',
