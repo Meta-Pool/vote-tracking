@@ -999,6 +999,7 @@ export const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavo
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
 export const META_POOL_DAO_ACCOUNT = useMainnet ? "meta-pool-dao.near" : "meta-pool-dao.testnet"
+setRpcUrl("https://rpc.mainnet.fastnear.com")
 if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
 
 mainAsyncProcess()
