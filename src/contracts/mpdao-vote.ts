@@ -6,13 +6,15 @@ import { isoTruncDate } from '../util/convert.js';
 export type VotableObjectJSON = {
     votable_contract: String;
     id: string;
-    current_votes: U128String
+    current_votes: U128String;
+    vote_timestamp: number | null;
 }
 
 export type VotePositionJSON = {
     votable_address: string;
     votable_object_id: string;
     voting_power: U128String;
+    vote_timestamp: number | null;
 }
 
 export type LockingPosition = {
@@ -35,6 +37,7 @@ export type VoterInfo = {
             votable_address: string;
             votable_object_id: string;
             voting_power: string;
+            vote_timestamp: number | null;
         }>;
 };
 
@@ -81,17 +84,17 @@ export class MpDaoVoteContract extends SmartContract {
         while (retrieved == BATCH_SIZE) {
             const batch: [] = await this.view("get_stnear_claims", { from_index: claims.length, limit: BATCH_SIZE }) as unknown as []
             retrieved = batch.length
-            for(let tuple of batch) {
+            for (let tuple of batch) {
                 // returned with current date to be stored in the tracking DB
-                claims.push({account_id:tuple[0],date:isoDate, token_code:0, claimable_amount: yton(tuple[1]) })
+                claims.push({ account_id: tuple[0], date: isoDate, token_code: 0, claimable_amount: yton(tuple[1]) })
             }
         }
         return claims
     }
-    
+
     // ALL migrated users [[account,amount_meta],...], (method existent only in the old contract using $META token)
     async getAllMigratedUsers(): Promise<String[]> {
-        let migratedUserTuples : String[] = []
+        let migratedUserTuples: String[] = []
         const isoDate = isoTruncDate()
         const BATCH_SIZE = 75
         let retrieved = BATCH_SIZE
