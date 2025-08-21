@@ -62,61 +62,18 @@ export class MpDaoVoteContract extends SmartContract {
 
     // ALL voter info, voter + locking-positions + voting-positions
     async getAllVoters(): Promise<VoterInfo[]> {
-        if (isDryRun()) console.log("start getAllVoters()");
-        let voters: VoterInfo[] = [];
-        const BATCH_SIZE = 50;
-        let retrieved = BATCH_SIZE;
-
-        // get_voters
-        while (retrieved === BATCH_SIZE) {
-            const batch: VoterInfo[] = await this.view("get_voters", {
-                from_index: voters.length,
-                limit: BATCH_SIZE,
-            }) as unknown as VoterInfo[];
-
-            retrieved = batch.length;
-            voters = voters.concat(batch);
-            if (isDryRun()) console.log("voters retrieved", voters.length);
+        if (isDryRun()) console.log("start getAllVoters()")
+        let voters: VoterInfo[] = []
+        const BATCH_SIZE = 50
+        let retrieved = BATCH_SIZE
+        while (retrieved == BATCH_SIZE) {
+            const batch: VoterInfo[] = await this.view("get_voters", { from_index: voters.length, limit: BATCH_SIZE }) as unknown as VoterInfo[]
+            retrieved = batch.length
+            voters = voters.concat(batch)
+            if (isDryRun()) console.log("voters retrieved", voters.length)
         }
-
-        // for each voter, get_votes_by_voter and merge into vote_positions
-        for (const voter of voters) {
-            try {
-                const rows: VotableObjectJSON[] = await this.view("get_votes_by_voter", {
-                    voter_id: voter.voter_id,
-                }) as unknown as VotableObjectJSON[];
-
-                // Empty Key Map: "<contract>::<id>"
-                // the key will be contract::id
-                // the value will be vote_timestamp or null
-                // tsbykey === timestamp by key
-                const tsByKey = new Map<string, number | null>();
-
-                // we fill the map with votable objects from get_votes_by_voter
-                for (const r of rows) {
-                    tsByKey.set(`${r.votable_contract}::${r.id}`, r.vote_timestamp ?? null);
-                }
-
-                // we use the map to match and update vote_positions
-                voter.vote_positions = voter.vote_positions.map((pos) => {
-                    const key = `${pos.votable_address}::${pos.votable_object_id}`;
-                    if (tsByKey.has(key)) {
-                        return { ...pos, vote_timestamp: tsByKey.get(key) ?? null };
-                    }
-                    return pos;
-                });
-
-                if (isDryRun()) {
-                    console.log(`get_votes_by_voter(${voter.voter_id}) => added into vote_positions`);
-                }
-            } catch (err) {
-                console.error(`Error on get_votes_by_voter(${voter.voter_id}):`, err);
-            }
-        }
-
-        return voters;
+        return voters
     }
-
 
     // ALL st_near claims
     async getAllStnearClaims(): Promise<AvailableClaims[]> {
