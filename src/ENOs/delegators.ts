@@ -83,6 +83,7 @@ const contracts = [
 const liquidStakingAccounts = [
     "meta-pool.near",
     "linear-protocol.near",
+    "lst.rhealab.near",
 ]
 
 export function getENOsContracts() {
