@@ -773,17 +773,20 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
 
     const contractsToAdd = contracts || getENOsContracts()
-    const delegatorTableFileName = `ENOs/temp_delegators_table_data.json`
+    const delegatorTableFileName = join(homedir(), `ENOs/temp_delegators_table_data.json`)
     let data
     if(existsSync(delegatorTableFileName)) {
+        console.log("Getting data from file", delegatorTableFileName)
         data = JSON.parse(readFileSync(delegatorTableFileName, 'utf-8'))
     } else {
+        console.log("Getting data from service")
         data = await generateDelegatorTableDataSince(startUnixTimestamp, endUnixTimestamp, contractsToAdd)
         writeFileSync(delegatorTableFileName, JSON.stringify(data))
     }
     if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
         if(isSuccess) {
+            console.log("Removing file", delegatorTableFileName)
             rmdirSync(delegatorTableFileName)
         }
         if (isSuccess && !contracts) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
@@ -796,16 +799,19 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
 
     let dataByDelegator
-    const dataByDelegatorFileName = `ENOs/temp_data_by_delegators.json`
+    const dataByDelegatorFileName = join(homedir(), `ENOs/temp_data_by_delegators.json`)
     if(existsSync(dataByDelegatorFileName)) {
+        console.log("Getting data from file", dataByDelegatorFileName)
         dataByDelegator = JSON.parse(readFileSync(dataByDelegatorFileName, 'utf-8'))
     } else {
+        console.log("Getting data from service")
         dataByDelegator = await generateTableDataByDelegatorSince(startUnixTimestamp, endUnixTimestampByDelegator, contractsToAdd)
         writeFileSync(dataByDelegatorFileName, JSON.stringify(dataByDelegator))
     }
     if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
         if(isSuccess) {
+            console.log("Removing file", dataByDelegatorFileName)
             rmdirSync(dataByDelegatorFileName)
         }
         if (isSuccess && !contracts) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
