@@ -746,9 +746,9 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
 
     let startUnixTimestamp = 1698807600 /*2023/11/01*/
     let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
-    const ONE_MONTH_IN_SECONDS = 1 * 30 * 24 * 60 * 60
-    let endUnixTimestamp = startUnixTimestamp + ONE_MONTH_IN_SECONDS
-    let endUnixTimestampByDelegator = startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS
+    const ONE_DAY_IN_SECONDS = 1 * 24 * 60 * 60
+    let endUnixTimestamp = startUnixTimestamp + ONE_DAY_IN_SECONDS
+    let endUnixTimestampByDelegator = startUnixTimestampByDelegator + ONE_DAY_IN_SECONDS
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
@@ -762,11 +762,11 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
         } else {
             if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
                 startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
-                endUnixTimestamp = Math.min(startUnixTimestamp + ONE_MONTH_IN_SECONDS, Date.now())
+                endUnixTimestamp = Math.min(startUnixTimestamp + ONE_DAY_IN_SECONDS, Date.now())
             }
             if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
                 startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_MONTH_IN_SECONDS, Date.now())
+                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_DAY_IN_SECONDS, Date.now())
             }
         }
 

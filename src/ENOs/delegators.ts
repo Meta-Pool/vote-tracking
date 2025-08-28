@@ -17,16 +17,16 @@ const enosContracts = [
 ]
 
 const pnosContracts = [
-    "citadelone.poolv1.near",
-    "chainbase.poolv1.near",
     "simplystaking.poolv1.near",
-    "cryptocrew.poolv1.near",
-    "crosnest.poolv1.near",
-    "validblocks.poolv1.near",
-    "dragonstake.poolv1.near",
-    "caliber.poolv1.near",
-    "originstake.poolv1.near",
-    "stcbahrain.poolv1.near",
+	"citadelone.poolv1.near",
+	"cryptocrew.poolv1.near",
+	"crosnest.poolv1.near",
+	"dragonstake.poolv1.near",
+	"caliber.poolv1.near",
+	"originstake.poolv1.near",
+	"rhea-validator.poolv1.near",
+	"northstakenear.poolv1.near",
+	"senseinode.poolv1.near",
 ]
 
 const stakeWars3Contracts = [
