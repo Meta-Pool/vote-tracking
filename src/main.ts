@@ -1,26 +1,26 @@
-import { existsSync, mkdirSync, readFile, readFileSync, rmdirSync, writeFileSync } from "fs";
-import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { setRpcUrl, yton } from "near-api-lite";
 import { argv, cwd, env } from "process";
+import { Database as SqLiteDatabase } from "sqlite3";
+import { MpDaoVoteContract, VoterInfo } from "./contracts/mpdao-vote";
+import * as sq3 from './util/sq3';
 import { APP_CODE, AvailableClaims, CREATE_TABLE_APP_DEB_VERSION, CREATE_TABLE_AVAILABLE_CLAIMS, CREATE_TABLE_ENO, CREATE_TABLE_ENO_BY_DELEGATOR, CREATE_TABLE_VALIDATOR_STAKE_HISTORY, CREATE_TABLE_VOTERS, CREATE_TABLE_VOTERS_PER_DAY_CONTRACT_ROUND, ENO, ENODelegator, ValidatorStakeHistory, VotersByContractAndRound, VotersRow } from "./util/tables";
 import { setRecentlyFreezedFoldersVotes } from "./votesSetter";
-import * as sq3 from './util/sq3';
-import { Database as SqLiteDatabase } from "sqlite3";
 
 
-import { Client } from 'pg';
+import { homedir } from "os";
 import { join } from "path";
-import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
-import { getPgConfig } from "./util/postgres";
-import { consoleShowVotesFor } from "./votesFor";
-import { isoTruncDate, toNumber } from "./util/convert";
-import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
-import { showMigrated } from "./migration/show-migrated";
+import { Client } from 'pg';
 import { showClaimsStNear } from "./claims/show-claims-stnear";
 import { computeAsDate } from "./compute-as-date";
-import { homedir } from "os";
-import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getValidatorArrayStakeHistorySince, getENOsContracts, getDelegatorGroupContracts } from "./ENOs/delegators";
+import { isDryRun, setGlobalDryRunMode } from "./contracts/base-smart-contract";
+import { generateDelegatorTableDataSince, generateTableDataByDelegatorSince, getDelegatorGroupContracts, getENOsContracts, getValidatorArrayStakeHistorySince } from "./ENOs/delegators";
 import { saveVoteSnapshotIntoSqliteDb } from "./migration/saveVoteSnapshotIntoSqliteDb";
+import { showMigrated } from "./migration/show-migrated";
+import { isoTruncDate, toNumber } from "./util/convert";
+import { getPgConfig } from "./util/postgres";
+import { OnConflictArgs, buildInsert } from "./util/sqlBuilder";
+import { consoleShowVotesFor } from "./votesFor";
 
 
 type ByContractAndRoundInfoType = {
@@ -705,8 +705,8 @@ async function insertValidatorsStakeHistory(contractIds?: string[], lastTimestam
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        if(contractIds) {
-            if(lastTimestamp) {
+        if (contractIds) {
+            if (lastTimestamp) {
                 endUnixTimestamp = lastTimestamp
             } else if (enosPersistentData.hasOwnProperty('lastRecordedStakeHistory')) {
                 endUnixTimestamp = enosPersistentData.lastRecordedStakeHistory
@@ -742,7 +742,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     if (!existsSync(enosDir)) {
         mkdirSync(enosDir)
     }
-    const enosFullPath = join(enosDir, enosFileName)
+    const enosFullPath = join(homedir(), enosDir, enosFileName)
 
     let startUnixTimestamp = 1698807600 /*2023/11/01*/
     let startUnixTimestampByDelegator = 1698807600 /*2023/11/01*/
@@ -752,26 +752,22 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     let enosPersistentData: EnoPersistentData = {} as EnoPersistentData;
     if (existsSync(enosFullPath)) {
         enosPersistentData = JSON.parse(readFileSync(enosFullPath).toString())
-        if (contracts) { // When contract is passed, we want to start from the beginning and finish at the same moment as the others
-            if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
-                endUnixTimestamp = enosPersistentData.lastRecordedTimestamp
-            }
-            if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
-                endUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-            }
-        } else {
-            if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
-                startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
-                endUnixTimestamp = Math.min(startUnixTimestamp + ONE_DAY_IN_SECONDS, Date.now())
-            }
-            if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
-                startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
-                endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_DAY_IN_SECONDS, Date.now())
-            }
+        console.log(2)
+        if (enosPersistentData.hasOwnProperty('lastRecordedTimestamp')) {
+            console.log(21)
+            startUnixTimestamp = enosPersistentData.lastRecordedTimestamp
+            endUnixTimestamp = Math.min(startUnixTimestamp + ONE_DAY_IN_SECONDS, Date.now())
         }
-
+        if (enosPersistentData.hasOwnProperty('lastRecordedTimestampByDelegator')) {
+            console.log(22)
+            startUnixTimestampByDelegator = enosPersistentData.lastRecordedTimestampByDelegator
+            endUnixTimestampByDelegator = Math.min(startUnixTimestampByDelegator + ONE_DAY_IN_SECONDS, Date.now())
+        }
     }
-
+    console.log(enosFullPath)
+    console.log(startUnixTimestamp, endUnixTimestamp)
+    console.log(startUnixTimestampByDelegator, endUnixTimestampByDelegator)
+    
     const contractsToAdd = contracts || getENOsContracts()
     const delegatorTableFileName = join(homedir(), `ENOs/temp_delegators_table_data.json`)
     let data
@@ -787,7 +783,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
         const isSuccess = await insertENOsData(data)
         if(isSuccess) {
             console.log("Removing file", delegatorTableFileName)
-            rmdirSync(delegatorTableFileName)
+            unlinkSync(delegatorTableFileName) // delete file
         }
         if (isSuccess && !contracts) { // If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = data.reduce((max: number, curr: ENO) => {
@@ -812,7 +808,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
         if(isSuccess) {
             console.log("Removing file", dataByDelegatorFileName)
-            rmdirSync(dataByDelegatorFileName)
+            unlinkSync(dataByDelegatorFileName)
         }
         if (isSuccess && !contracts) {// If contract is provided, we don't want to update, since all the other contracts may have not been updated yet
             const maxTimestamp = dataByDelegator.reduce((max: number, curr: ENODelegator) => {
@@ -875,7 +871,7 @@ async function mainAsyncProcess() {
         const start = Date.now()
         const delegatorGroup = argv[addDelegatorGroupContractInx + 1]
         const contracts = getDelegatorGroupContracts(delegatorGroup)
-        if(!contracts) {
+        if (!contracts) {
             console.error("No contracts found for group", delegatorGroup)
             return
         }
@@ -902,7 +898,7 @@ async function mainAsyncProcess() {
         const delegatorGroup = argv[addStakeHistoryGroupInx + 1]
         const lastTimestamp = argv[addStakeHistoryGroupInx + 2] ? Number(argv[addStakeHistoryGroupInx + 2]) : undefined
         const contracts = getDelegatorGroupContracts(delegatorGroup)
-        if(!contracts) {
+        if (!contracts) {
             console.error("No contracts found for group", delegatorGroup)
             return
         }
