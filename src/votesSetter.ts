@@ -1,7 +1,7 @@
 import { yton } from "near-api-lite";
 import { FolderData, MetaPipelineContract, ProjectMetadataJson } from "./contracts/meta-pipeline";
 import { VoterInfo } from "./contracts/mpdao-vote";
-import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID, dryRun } from "./main";
+import { META_PIPELINE_CONTRACT_ID, META_PIPELINE_OPERATOR_ID, dryRun, useTestnet } from "./main";
 import { getCredentials } from "./util/near";
 import { sleep } from "./util/util";
 
@@ -52,7 +52,6 @@ export async function setRecentlyFreezedFoldersVotes() {
         return folder.freeze_unix_timestamp <= nowInSeconds && folder.end_vote_timestamp <= nowInSeconds
     })
 
-
     // get the folder with max end_vote_timestamp
     const folderToUpdate = voteCompletedFolders.reduce((latestFinishedFolder: FolderData, curr: FolderData) => {
         if (curr.end_vote_timestamp >= latestFinishedFolder.end_vote_timestamp) {
@@ -62,7 +61,9 @@ export async function setRecentlyFreezedFoldersVotes() {
         }
     }, voteCompletedFolders[0])
 
-    console.log("folder to update", folderToUpdate)
+    console.log("folder with max end_vote_timestamp", folderToUpdate)
+    console.log("start_vote_timestamp", new Date(folderToUpdate.start_vote_timestamp * 1000).toISOString())
+    console.log("end_vote_timestamp", new Date(folderToUpdate.end_vote_timestamp * 1000).toISOString())
 
     // get all project meta-data in the folder
     const projectsMetadata: ProjectMetadataJson[] = await metaPipelineContract.getProjectsInFolder(folderToUpdate.folder_id)
@@ -84,8 +85,6 @@ export async function setRecentlyFreezedFoldersVotes() {
     }
 
     if (voteCompletedFolders.length === 0) return
-    // get first snapshot after votes closed
-    let allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
 
     // select all the non-updated yet (votes==0)
     // We assume every project will have at least 1 vote. We do it ourselves if needed
@@ -94,6 +93,20 @@ export async function setRecentlyFreezedFoldersVotes() {
     })
 
     if (projectsToUpdate.length === 0) return
+
+    // get first snapshot after votes closed
+    let allVoters: VoterInfo[] = [];
+    try {
+        allVoters = getVotesSnapshot(folderToUpdate.end_vote_timestamp)
+    } catch (error) {
+        if (useTestnet) {
+            console.error("Error getting votes snapshot:", error)
+            console.log("TESTNET mode, assume zero votes")
+        }
+        else {
+            throw error
+        }
+    }
 
     // sum votes per-project
     const votes: Record<number, bigint> = processVoters(allVoters)

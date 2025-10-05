@@ -9,6 +9,7 @@ mkdir -p "$CURRENT_MONTH"
 
 # Use rsync to download only files modified in the last 24 hours
 # The --files-from option combined with ssh command to find recent files
+# cSpell:words newermt
 rsync -auv --rsh='ssh -p2022' \
     --files-from=<(ssh -p2022 $USER@eth-metapool.narwallets.com "find /home/$USER/2025-08 -name '*.json' -newermt '$YESTERDAY' -printf '%P\n'") \
     $USER@eth-metapool.narwallets.com:/home/$USER/2025-08/ \
