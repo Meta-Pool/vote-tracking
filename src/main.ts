@@ -767,11 +767,11 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     console.log(enosFullPath)
     console.log(startUnixTimestamp, endUnixTimestamp)
     console.log(startUnixTimestampByDelegator, endUnixTimestampByDelegator)
-    
+
     const contractsToAdd = contracts || getENOsContracts()
     const delegatorTableFileName = join(homedir(), `ENOs/temp_delegators_table_data.json`)
     let data
-    if(existsSync(delegatorTableFileName)) {
+    if (existsSync(delegatorTableFileName)) {
         console.log("Getting data from file", delegatorTableFileName)
         data = JSON.parse(readFileSync(delegatorTableFileName, 'utf-8'))
     } else {
@@ -781,7 +781,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
     if (data.length > 0) {
         const isSuccess = await insertENOsData(data)
-        if(isSuccess) {
+        if (isSuccess) {
             console.log("Removing file", delegatorTableFileName)
             unlinkSync(delegatorTableFileName) // delete file
         }
@@ -796,7 +796,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
 
     let dataByDelegator
     const dataByDelegatorFileName = join(homedir(), `ENOs/temp_data_by_delegators.json`)
-    if(existsSync(dataByDelegatorFileName)) {
+    if (existsSync(dataByDelegatorFileName)) {
         console.log("Getting data from file", dataByDelegatorFileName)
         dataByDelegator = JSON.parse(readFileSync(dataByDelegatorFileName, 'utf-8'))
     } else {
@@ -806,7 +806,7 @@ async function getENOsStakeDataAndInsertIt(contracts?: string[]) {
     }
     if (dataByDelegator.length > 0) {
         const isSuccess = await insertENOsByDelegatorData(dataByDelegator)
-        if(isSuccess) {
+        if (isSuccess) {
             console.log("Removing file", dataByDelegatorFileName)
             unlinkSync(dataByDelegatorFileName)
         }
@@ -974,16 +974,18 @@ async function mainAsyncProcess() {
         console.error(err)
     }
 
-    try {
-        await getENOsStakeDataAndInsertIt()
-    } catch (err) {
-        console.error(err)
-    }
-
-    try {
-        await insertValidatorsStakeHistory()
-    } catch (err) {
-        console.error(err)
+    // process ENOs, PNOs & stakeWars3 validators - only in mainnet
+    if (useMainnet) {
+        try {
+            await getENOsStakeDataAndInsertIt()
+        } catch (err) {
+            console.error(err)
+        }
+        try {
+            await insertValidatorsStakeHistory()
+        } catch (err) {
+            console.error(err)
+        }
     }
 }
 
@@ -1001,7 +1003,8 @@ export const OLD_META_VOTE_CONTRACT_ID = useMainnet ? "meta-vote.near" : "metavo
 export const META_PIPELINE_CONTRACT_ID = useMainnet ? "meta-pipeline.near" : "dev-1686255629935-21712092475027"
 export const META_PIPELINE_OPERATOR_ID = useMainnet ? "pipeline-operator.near" : "mpdao-vote.testnet"
 export const META_POOL_DAO_ACCOUNT = useMainnet ? "meta-pool-dao.near" : "meta-pool-dao.testnet"
+
 setRpcUrl("https://rpc.mainnet.fastnear.com")
-if (useTestnet) setRpcUrl("https://rpc.testnet.near.org")
+if (useTestnet) setRpcUrl("https://test.rpc.fastnear.com")
 
 mainAsyncProcess()
